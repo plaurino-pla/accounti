@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const googleapis_1 = require("googleapis");
 const google_auth_library_1 = require("google-auth-library");
+const auth_1 = require("../middleware/auth");
 const router = express_1.default.Router();
 const oauth2Client = new google_auth_library_1.OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/callback');
 const GMAIL_SCOPES = [
@@ -64,9 +65,12 @@ router.get('/google/callback', async (req, res) => {
         return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
     }
 });
-router.post('/connect/gmail', async (req, res) => {
+router.post('/connect/gmail', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { userId } = req.body;
+        const userId = req.user?.uid;
+        if (!userId) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
         if (process.env.NODE_ENV === 'development') {
             console.log('Mock Gmail connection for user:', userId);
             return res.json({
@@ -82,9 +86,12 @@ router.post('/connect/gmail', async (req, res) => {
         return res.status(500).json({ error: 'Failed to connect Gmail' });
     }
 });
-router.post('/connect/drive', async (req, res) => {
+router.post('/connect/drive', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { userId } = req.body;
+        const userId = req.user?.uid;
+        if (!userId) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
         if (process.env.NODE_ENV === 'development') {
             console.log('Mock Google Drive connection for user:', userId);
             return res.json({
@@ -100,9 +107,12 @@ router.post('/connect/drive', async (req, res) => {
         return res.status(500).json({ error: 'Failed to connect Google Drive' });
     }
 });
-router.post('/onboarding/complete', async (req, res) => {
+router.post('/onboarding/complete', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { userId } = req.body;
+        const userId = req.user?.uid;
+        if (!userId) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
         if (process.env.NODE_ENV === 'development') {
             console.log('Mock onboarding completion for user:', userId);
             return res.json({
@@ -118,9 +128,12 @@ router.post('/onboarding/complete', async (req, res) => {
         return res.status(500).json({ error: 'Failed to complete onboarding' });
     }
 });
-router.get('/profile', async (req, res) => {
+router.get('/profile', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { userId } = req.query;
+        const userId = req.user?.uid;
+        if (!userId) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
         if (process.env.NODE_ENV === 'development') {
             const mockUser = {
                 uid: 'mock-user-id',
@@ -140,7 +153,7 @@ router.get('/profile', async (req, res) => {
         return res.status(500).json({ error: 'Failed to get user profile' });
     }
 });
-router.post('/signout', (req, res) => {
+router.post('/signout', auth_1.authenticateToken, async (req, res) => {
     try {
         return res.json({ success: true, message: 'Signed out successfully' });
     }
