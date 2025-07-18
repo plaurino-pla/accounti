@@ -1,0 +1,1 @@
+{"version":3,"file":"subscriptionController.d.ts","sourceRoot":"","sources":["../../src/controllers/subscriptionController.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,QAAQ,EAAE,MAAM,SAAS,CAAC;AAQ5C,eAAO,MAAM,sBAAsB;oBACX,OAAO,OAAO,QAAQ;iCA+DT,OAAO,OAAO,QAAQ;+BA0CxB,OAAO,OAAO,QAAQ;kCAanB,OAAO,OAAO,QAAQ;yBAqB/B,OAAO,OAAO,QAAQ;CAkClD,CAAC"}
