@@ -2,15 +2,16 @@ import express from 'express';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import * as admin from 'firebase-admin';
+import * as functions from 'firebase-functions';
 
 const router = express.Router();
 const db = admin.firestore();
 
 // Google OAuth2 client
 const oauth2Client = new OAuth2Client(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI
+  functions.config().google?.client_id || process.env.GOOGLE_CLIENT_ID || '',
+  functions.config().google?.client_secret || process.env.GOOGLE_CLIENT_SECRET || '',
+  functions.config().google?.redirect_uri || process.env.GOOGLE_REDIRECT_URI || ''
 );
 
 // Scopes required for the application
@@ -76,7 +77,7 @@ router.get('/callback', async (req, res) => {
     await db.collection('users').doc(userData.uid).set(userData, { merge: true });
 
     // Redirect to frontend with user data
-    const frontendUrl = process.env.FRONTEND_URL || 'https://accounti-4698b.web.app';
+    const frontendUrl = functions.config().app?.frontend_url || process.env.FRONTEND_URL || 'https://accounti-4698b.web.app';
     const userParam = encodeURIComponent(JSON.stringify(userData));
     res.redirect(`${frontendUrl}?user=${userParam}`);
 
