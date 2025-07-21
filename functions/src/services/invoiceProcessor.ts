@@ -1,6 +1,7 @@
 import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
 import pdfParse from 'pdf-parse';
 import * as admin from 'firebase-admin';
+import * as functions from 'firebase-functions';
 import { DriveService } from './driveService';
 import { SheetsService, SheetRow } from './sheetsService';
 
@@ -40,8 +41,8 @@ export class InvoiceProcessor {
 
   constructor() {
     this.documentAiClient = new DocumentProcessorServiceClient();
-    this.processorId = process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID || '';
-    this.location = process.env.GOOGLE_DOCUMENT_AI_LOCATION || 'us';
+    this.processorId = process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID || functions.config().google?.document_ai_processor_id || '';
+    this.location = process.env.GOOGLE_DOCUMENT_AI_LOCATION || functions.config().google?.document_ai_location || 'us';
   }
 
   // Check if attachment is likely an invoice
@@ -146,10 +147,13 @@ export class InvoiceProcessor {
   async processInvoiceWithDocumentAI(buffer: Buffer): Promise<Partial<ProcessedInvoice>> {
     try {
       if (!this.processorId) {
-        throw new Error('Document AI processor ID not configured');
+        console.log('Document AI processor ID not configured, using text extraction');
+        return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
       }
 
-      const name = `projects/${process.env.GOOGLE_PROJECT_ID}/locations/${this.location}/processors/${this.processorId}`;
+      console.log('Using Document AI processor:', this.processorId);
+      const projectId = functions.config().google?.project_id || 'accounti-4698b';
+      const name = `projects/${projectId}/locations/${this.location}/processors/${this.processorId}`;
       
       const request = {
         name,
@@ -162,20 +166,23 @@ export class InvoiceProcessor {
       const [result] = await this.documentAiClient.processDocument(request);
       const { document } = result;
 
-      if (!document?.entities) {
-        throw new Error('No entities found in document');
+      if (!document?.text) {
+        throw new Error('No text extracted from document');
       }
 
-      // Extract invoice data from Document AI entities
-      const extractedData = this.extractInvoiceDataFromEntities(document.entities);
+      console.log('Document AI extracted text length:', document.text.length);
+
+      // For Document OCR, we get text but not structured entities
+      // So we use our enhanced text extraction on the OCR'd text
+      const extractedData = this.extractInvoiceDataFromText(document.text);
       
       return {
         ...extractedData,
-        confidence: 0.8 // Default confidence for Document AI processing
+        confidence: 0.9 // Higher confidence for Document AI OCR + our text extraction
       };
     } catch (error) {
       console.error('Document AI processing failed:', error);
-      // Fallback to text-based extraction
+      // Fallback to PDF text extraction
       return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
     }
   }
