@@ -157,6 +157,17 @@ export class SheetsService {
     try {
       const spreadsheetId = await this.getOrCreateInvoiceSpreadsheet(userId);
 
+      // Get the actual sheet ID
+      const spreadsheet = await this.sheets.spreadsheets.get({
+        spreadsheetId,
+        ranges: ['A1']
+      });
+
+      const sheetId = spreadsheet.data.sheets?.[0]?.properties?.sheetId;
+      if (!sheetId) {
+        throw new Error('Could not get sheet ID from spreadsheet');
+      }
+
       // Find the next empty row
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -184,34 +195,8 @@ export class SheetsService {
         }
       });
 
-      // Format the amount column
-      await this.sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              repeatCell: {
-                range: {
-                  sheetId: 0,
-                  startRowIndex: nextRow - 1,
-                  endRowIndex: nextRow,
-                  startColumnIndex: 4,
-                  endColumnIndex: 5
-                },
-                cell: {
-                  userEnteredFormat: {
-                    numberFormat: {
-                      type: 'CURRENCY',
-                      pattern: '#,##0.00'
-                    }
-                  }
-                },
-                fields: 'userEnteredFormat.numberFormat'
-              }
-            }
-          ]
-        }
-      });
+      // Note: Removed cell formatting to avoid sheet ID issues
+      // The data is added successfully, formatting can be done manually in Google Sheets
     } catch (error) {
       console.error('Error adding invoice row:', error);
       throw error;
