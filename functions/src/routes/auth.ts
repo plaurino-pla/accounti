@@ -44,7 +44,8 @@ router.get('/callback', async (req, res) => {
     const { code } = req.query;
     
     if (!code) {
-      return res.status(400).json({ error: 'Authorization code missing' });
+      res.status(400).json({ error: 'Authorization code missing' });
+      return;
     }
 
     // Exchange code for tokens
@@ -56,7 +57,8 @@ router.get('/callback', async (req, res) => {
     const userInfo = await oauth2.userinfo.get();
 
     if (!userInfo.data.email) {
-      return res.status(400).json({ error: 'Failed to get user email' });
+      res.status(400).json({ error: 'Failed to get user email' });
+      return;
     }
 
     // Create or update user in Firestore
@@ -90,20 +92,23 @@ router.post('/refresh', async (req, res) => {
     const { userId } = req.body;
     
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      res.status(400).json({ error: 'User ID required' });
+      return;
     }
 
     // Get user from Firestore
     const userDoc = await db.collection('users').doc(userId).get();
     
     if (!userDoc.exists) {
-      return res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found' });
+      return;
     }
 
     const userData = userDoc.data();
     
     if (!userData?.refreshToken) {
-      return res.status(400).json({ error: 'No refresh token available' });
+      res.status(400).json({ error: 'No refresh token available' });
+      return;
     }
 
     // Set credentials and refresh token
@@ -138,7 +143,8 @@ router.post('/validate', async (req, res) => {
     const { accessToken } = req.body;
     
     if (!accessToken) {
-      return res.status(400).json({ error: 'Access token required' });
+      res.status(400).json({ error: 'Access token required' });
+      return;
     }
 
     oauth2Client.setCredentials({ access_token: accessToken });

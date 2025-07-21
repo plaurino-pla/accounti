@@ -12,7 +12,8 @@ router.get('/files/:userId', async (req, res) => {
     const { accessToken } = req.query;
     
     if (!accessToken) {
-      return res.status(400).json({ error: 'Access token required' });
+      res.status(400).json({ error: 'Access token required' });
+      return;
     }
 
     const driveService = new DriveService(accessToken as string);
@@ -32,14 +33,16 @@ router.get('/file/:fileId', async (req, res) => {
     const { accessToken } = req.query;
     
     if (!accessToken) {
-      return res.status(400).json({ error: 'Access token required' });
+      res.status(400).json({ error: 'Access token required' });
+      return;
     }
 
     const driveService = new DriveService(accessToken as string);
     const fileInfo = await driveService.getFileInfo(fileId);
     
     if (!fileInfo) {
-      return res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found' });
+      return;
     }
     
     res.json({ file: fileInfo });
@@ -56,7 +59,8 @@ router.delete('/clear/:userId', async (req, res) => {
     const { accessToken } = req.body;
     
     if (!accessToken) {
-      return res.status(400).json({ error: 'Access token required' });
+      res.status(400).json({ error: 'Access token required' });
+      return;
     }
 
     const driveService = new DriveService(accessToken);

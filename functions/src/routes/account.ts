@@ -12,7 +12,8 @@ router.delete('/clear-data', async (req, res) => {
     const { userId, accessToken } = req.body;
     
     if (!userId) {
-      return res.status(400).json({ error: 'Missing userId' });
+      res.status(400).json({ error: 'Missing userId' });
+      return;
     }
 
     let driveFilesDeleted = 0;
@@ -79,7 +80,8 @@ router.get('/profile/:userId', async (req, res) => {
     const userDoc = await db.collection('users').doc(userId).get();
     
     if (!userDoc.exists) {
-      return res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found' });
+      return;
     }
 
     const userData = userDoc.data();

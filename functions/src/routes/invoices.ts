@@ -12,7 +12,8 @@ router.post('/scan', async (req, res) => {
     const { userId, accessToken } = req.body;
     
     if (!userId || !accessToken) {
-      return res.status(400).json({ error: 'Missing userId or accessToken' });
+      res.status(400).json({ error: 'Missing userId or accessToken' });
+      return;
     }
 
     // Initialize services

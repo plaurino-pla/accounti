@@ -12,7 +12,8 @@ router.get('/url/:userId', async (req, res) => {
     const { accessToken } = req.query;
     
     if (!accessToken) {
-      return res.status(400).json({ error: 'Access token required' });
+      res.status(400).json({ error: 'Access token required' });
+      return;
     }
 
     const sheetsService = new SheetsService(accessToken as string);
@@ -32,7 +33,8 @@ router.post('/update/:userId', async (req, res) => {
     const { accessToken } = req.body;
     
     if (!accessToken) {
-      return res.status(400).json({ error: 'Access token required' });
+      res.status(400).json({ error: 'Access token required' });
+      return;
     }
 
     const sheetsService = new SheetsService(accessToken);
@@ -58,7 +60,8 @@ router.post('/create/:userId', async (req, res) => {
     const { accessToken } = req.body;
     
     if (!accessToken) {
-      return res.status(400).json({ error: 'Access token required' });
+      res.status(400).json({ error: 'Access token required' });
+      return;
     }
 
     const sheetsService = new SheetsService(accessToken);
