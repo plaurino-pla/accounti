@@ -1,0 +1,123 @@
+import express from 'express';
+import * as admin from 'firebase-admin';
+
+const router = express.Router();
+const db = admin.firestore();
+
+// Clear all user data
+router.delete('/clear-data', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing userId' });
+    }
+
+    // Delete all user's invoices
+    const invoicesSnapshot = await db.collection('invoices')
+      .where('userId', '==', userId)
+      .get();
+
+    const invoiceDeletes = invoicesSnapshot.docs.map(doc => doc.ref.delete());
+    await Promise.all(invoiceDeletes);
+
+    // Delete all processing logs
+    const logsSnapshot = await db.collection('processing_logs')
+      .where('userId', '==', userId)
+      .get();
+
+    const logDeletes = logsSnapshot.docs.map(doc => doc.ref.delete());
+    await Promise.all(logDeletes);
+
+    // Reset user's last processed timestamp
+    await db.collection('users').doc(userId).update({
+      lastProcessedTimestamp: null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.json({
+      success: true,
+      message: 'All data cleared successfully',
+      deletedInvoices: invoicesSnapshot.docs.length,
+      deletedLogs: logsSnapshot.docs.length
+    });
+
+  } catch (error) {
+    console.error('Error clearing user data:', error);
+    res.status(500).json({ error: 'Failed to clear user data' });
+  }
+});
+
+// Get user profile
+router.get('/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const userDoc = await db.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userData = userDoc.data();
+    
+    // Don't send sensitive data like tokens
+    const { accessToken, refreshToken, ...safeUserData } = userData!;
+    
+    res.json({ user: safeUserData });
+
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// Update user settings
+router.put('/settings/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { driveFolder, spreadsheetId } = req.body;
+    
+    const updateData: any = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    if (driveFolder !== undefined) updateData.driveFolder = driveFolder;
+    if (spreadsheetId !== undefined) updateData.spreadsheetId = spreadsheetId;
+    
+    await db.collection('users').doc(userId).update(updateData);
+    
+    res.json({ success: true, message: 'Settings updated successfully' });
+
+  } catch (error) {
+    console.error('Error updating user settings:', error);
+    res.status(500).json({ error: 'Failed to update user settings' });
+  }
+});
+
+// Get processing logs
+router.get('/logs/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { limit = 20 } = req.query;
+    
+    const snapshot = await db.collection('processing_logs')
+      .where('userId', '==', userId)
+      .orderBy('startTime', 'desc')
+      .limit(parseInt(limit as string))
+      .get();
+    
+    const logs = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    res.json({ logs });
+
+  } catch (error) {
+    console.error('Error fetching processing logs:', error);
+    res.status(500).json({ error: 'Failed to fetch processing logs' });
+  }
+});
+
+export default router; 
