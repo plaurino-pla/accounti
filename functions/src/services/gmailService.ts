@@ -41,28 +41,44 @@ export class GmailService {
         query += ` after:${dateString}`;
       }
 
+      console.log(`Searching for emails with query: ${query}`);
+
       const response = await this.gmail.users.messages.list({
         userId: 'me',
         q: query,
-        maxResults: 100
+        maxResults: 50 // Reduced from 100 to 50 for faster processing
       });
 
       const messages = response.data.messages || [];
+      console.log(`Found ${messages.length} emails with attachments`);
+
+      if (messages.length === 0) {
+        return [];
+      }
+
       const detailedMessages: EmailMessage[] = [];
 
-      // Get detailed information for each message
-      for (const message of messages) {
-        const detail = await this.gmail.users.messages.get({
-          userId: 'me',
-          id: message.id
-        });
+      // Get detailed information for each message (limit to first 20 to avoid timeouts)
+      const messagesToProcess = messages.slice(0, 20);
+      
+      for (const message of messagesToProcess) {
+        try {
+          const detail = await this.gmail.users.messages.get({
+            userId: 'me',
+            id: message.id
+          });
 
-        const emailMessage = this.parseEmailMessage(detail.data);
-        if (emailMessage.attachments && emailMessage.attachments.length > 0) {
-          detailedMessages.push(emailMessage);
+          const emailMessage = this.parseEmailMessage(detail.data);
+          if (emailMessage.attachments && emailMessage.attachments.length > 0) {
+            detailedMessages.push(emailMessage);
+          }
+        } catch (error) {
+          console.error(`Error processing message ${message.id}:`, error);
+          // Continue with other messages
         }
       }
 
+      console.log(`Successfully processed ${detailedMessages.length} emails with attachments`);
       return detailedMessages;
     } catch (error) {
       console.error('Error fetching emails with attachments:', error);

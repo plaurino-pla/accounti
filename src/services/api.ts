@@ -5,7 +5,7 @@ const API_BASE_URL = 'https://us-central1-accounti-4698b.cloudfunctions.net/api'
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30 seconds timeout for file operations
+  timeout: 60000, // 60 seconds timeout for Gmail scanning operations
 });
 
 // Request interceptor to add auth headers
