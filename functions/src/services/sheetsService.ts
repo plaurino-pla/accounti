@@ -250,34 +250,8 @@ export class SheetsService {
         });
       }
 
-      // Format amount column
-      await this.sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              repeatCell: {
-                range: {
-                  sheetId: 0,
-                  startRowIndex: 1,
-                  endRowIndex: rows.length + 1,
-                  startColumnIndex: 4,
-                  endColumnIndex: 5
-                },
-                cell: {
-                  userEnteredFormat: {
-                    numberFormat: {
-                      type: 'CURRENCY',
-                      pattern: '#,##0.00'
-                    }
-                  }
-                },
-                fields: 'userEnteredFormat.numberFormat'
-              }
-            }
-          ]
-        }
-      });
+      // Note: Removed cell formatting to avoid sheet ID issues
+      // The data is added successfully, formatting can be done manually in Google Sheets
     } catch (error) {
       console.error('Error updating spreadsheet with all invoices:', error);
       throw error;
