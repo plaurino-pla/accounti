@@ -151,7 +151,7 @@ export class InvoiceProcessor {
         return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
       }
 
-      console.log('Using Document AI Custom Extractor processor:', this.processorId);
+      console.log('Using Document AI Invoice Parser processor:', this.processorId);
       const projectId = functions.config().google?.project_id || 'accounti-4698b';
       const name = `projects/${projectId}/locations/${this.location}/processors/${this.processorId}`;
       
@@ -173,12 +173,12 @@ export class InvoiceProcessor {
 
       console.log('Document AI extracted entities:', document.entities.length);
 
-      // For Custom Extractor, we get structured entities directly
+      // For Invoice Parser, we get structured entities directly
       const extractedData = this.extractInvoiceDataFromEntities(document.entities);
       
       return {
         ...extractedData,
-        confidence: 0.95 // Very high confidence for Custom Extractor
+        confidence: 0.95 // Very high confidence for Invoice Parser
       };
     } catch (error) {
       console.error('Document AI processing failed:', error);
@@ -200,12 +200,14 @@ export class InvoiceProcessor {
       
       console.log(`Entity: ${type} = "${text}" (confidence: ${confidence})`);
       
+      // Google's Invoice Parser uses these standard entity types
       switch (type) {
         case 'invoice_id':
         case 'invoice_number':
         case 'invoice_number':
         case 'inv_number':
         case 'bill_number':
+        case 'invoice_id':
           data.invoiceNumber = text;
           break;
         case 'supplier_name':
@@ -215,6 +217,8 @@ export class InvoiceProcessor {
         case 'seller_name':
         case 'from':
         case 'bill_from':
+        case 'supplier':
+        case 'vendor':
           data.vendorName = text;
           break;
         case 'invoice_date':
@@ -222,11 +226,13 @@ export class InvoiceProcessor {
         case 'date':
         case 'billing_date':
         case 'created_date':
+        case 'invoice_date':
           data.issueDate = this.parseDate(text);
           break;
         case 'due_date':
         case 'payment_due_date':
         case 'due':
+        case 'due_date':
           data.dueDate = this.parseDate(text);
           break;
         case 'total_amount':
@@ -236,10 +242,13 @@ export class InvoiceProcessor {
         case 'grand_total':
         case 'balance_due':
         case 'amount_due':
+        case 'total_amount':
+        case 'invoice_amount':
           data.amount = this.parseAmount(text);
           break;
         case 'currency':
         case 'currency_code':
+        case 'currency':
           data.currency = text;
           break;
         case 'tax_amount':
@@ -247,6 +256,7 @@ export class InvoiceProcessor {
         case 'tax':
         case 'gst':
         case 'hst':
+        case 'tax_amount':
           data.taxAmount = this.parseAmount(text);
           break;
       }
