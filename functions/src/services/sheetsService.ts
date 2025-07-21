@@ -103,53 +103,8 @@ export class SheetsService {
       }
     });
 
-    // Format headers
-    await this.sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            repeatCell: {
-              range: {
-                sheetId: 0,
-                startRowIndex: 0,
-                endRowIndex: 1,
-                startColumnIndex: 0,
-                endColumnIndex: 8
-              },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: {
-                    red: 0.2,
-                    green: 0.6,
-                    blue: 0.9
-                  },
-                  textFormat: {
-                    bold: true,
-                    foregroundColor: {
-                      red: 1,
-                      green: 1,
-                      blue: 1
-                    }
-                  }
-                }
-              },
-              fields: 'userEnteredFormat(backgroundColor,textFormat)'
-            }
-          },
-          {
-            autoResizeDimensions: {
-              dimensions: {
-                sheetId: 0,
-                dimension: 'COLUMNS',
-                startIndex: 0,
-                endIndex: 8
-              }
-            }
-          }
-        ]
-      }
-    });
+    // Note: Removed header formatting to avoid sheet ID issues
+    // Headers are added successfully, formatting can be done manually in Google Sheets
   }
 
   // Add invoice row to spreadsheet
