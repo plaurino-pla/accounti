@@ -85,10 +85,10 @@ export class DriveService {
         description: 'Invoice processed by Accounti'
       };
 
-      // Create media
+      // Create media with proper stream handling
       const media = {
         mimeType: mimeType,
-        body: buffer
+        body: require('stream').Readable.from(buffer)
       };
 
       // Upload file

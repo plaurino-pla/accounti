@@ -60,7 +60,16 @@ router.post('/scan', async (req, res) => {
             }
 
             // Download attachment
-            const buffer = await gmailService.downloadAttachment(email.id, attachment.attachmentId);
+            let buffer: Buffer;
+            try {
+              buffer = await gmailService.downloadAttachment(email.id, attachment.attachmentId);
+              console.log(`Downloaded attachment: ${attachment.filename}, size: ${buffer.length} bytes`);
+            } catch (downloadError) {
+              const errorMsg = `Error downloading attachment ${attachment.filename}: ${downloadError}`;
+              console.error(errorMsg);
+              errors.push(errorMsg);
+              continue; // Skip this attachment
+            }
 
             // Check if it's an invoice
             try {

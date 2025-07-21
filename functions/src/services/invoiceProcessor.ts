@@ -95,17 +95,23 @@ export class InvoiceProcessor {
         return '';
       }
 
+      console.log(`Processing buffer of size: ${buffer.length} bytes`);
+
       // Try PDF parsing first
       try {
-        const pdfData = await pdfParse(buffer, {
-          // Add options to handle different PDF formats
-          max: 0 // No page limit
-        });
+        console.log('Attempting PDF parsing...');
+        const pdfData = await pdfParse(buffer);
+        console.log('PDF parsing successful, text length:', pdfData.text?.length || 0);
         return pdfData.text || '';
       } catch (pdfError) {
         console.log('PDF parsing failed, trying Document AI:', (pdfError as Error).message);
         // If PDF parsing fails, try Document AI
-        return await this.extractTextWithDocumentAI(buffer);
+        try {
+          return await this.extractTextWithDocumentAI(buffer);
+        } catch (docAiError) {
+          console.log('Document AI also failed:', (docAiError as Error).message);
+          return '';
+        }
       }
     } catch (error) {
       console.error('Error extracting text from buffer:', error);
