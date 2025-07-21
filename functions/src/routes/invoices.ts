@@ -2,6 +2,7 @@ import express from 'express';
 import * as admin from 'firebase-admin';
 import { GmailService } from '../services/gmailService';
 import { InvoiceProcessor, ProcessedInvoice } from '../services/invoiceProcessor';
+import { SchedulerService } from '../services/scheduler';
 
 const router = express.Router();
 const db = admin.firestore();
@@ -221,5 +222,32 @@ async function logProcessingResults(userId: string, results: {
     console.error('Error logging processing results:', error);
   }
 }
+
+// Manual trigger for scheduled processing (for testing)
+router.post('/trigger-scheduled', async (req, res) => {
+  try {
+    const { userId, accessToken } = req.body;
+    
+    if (!userId || !accessToken) {
+      res.status(400).json({ error: 'Missing userId or accessToken' });
+      return;
+    }
+
+    console.log(`Manual trigger of scheduled processing for user: ${userId}`);
+    
+    const schedulerService = new SchedulerService();
+    const result = await schedulerService.processUserInvoices(userId, accessToken);
+    
+    res.json({
+      success: true,
+      message: 'Scheduled processing completed',
+      result
+    });
+
+  } catch (error) {
+    console.error('Manual trigger error:', error);
+    res.status(500).json({ error: 'Failed to trigger scheduled processing' });
+  }
+});
 
 export default router; 

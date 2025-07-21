@@ -111,6 +111,9 @@ export const invoiceAPI = {
   scanInvoices: (userId: string, accessToken: string) =>
     api.post<ScanResult>('/invoices/scan', { userId, accessToken }),
   
+  triggerScheduledProcessing: (userId: string, accessToken: string) =>
+    api.post<{ success: boolean; message: string; result: ProcessingLog }>('/invoices/trigger-scheduled', { userId, accessToken }),
+  
   getUserInvoices: (userId: string, limit = 50, offset = 0) =>
     api.get<{ invoices: Invoice[] }>(`/invoices/${userId}`, {
       params: { limit, offset }

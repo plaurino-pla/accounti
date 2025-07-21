@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Invoice, InvoiceStats, invoiceAPI, accountAPI, sheetsAPI, driveAPI, authAPI } from '../services/api';
+import { User, Invoice, InvoiceStats, ProcessingLog, invoiceAPI, accountAPI, sheetsAPI, driveAPI, authAPI } from '../services/api';
 import InvoiceTable from './InvoiceTable';
 
 interface DashboardProps {
@@ -19,11 +19,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const [loading, setLoading] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
+  const [processingLogs, setProcessingLogs] = useState<ProcessingLog[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
 
   useEffect(() => {
     loadInvoices();
     loadStats();
     loadSpreadsheetUrl();
+    loadProcessingLogs();
   }, [user.uid]);
 
   const loadInvoices = async () => {
@@ -50,6 +53,67 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       setSpreadsheetUrl(response.data.url);
     } catch (error) {
       console.error('Failed to load spreadsheet URL:', error);
+    }
+  };
+
+  const loadProcessingLogs = async () => {
+    try {
+      const response = await accountAPI.getProcessingLogs(user.uid);
+      setProcessingLogs(response.data.logs || []);
+    } catch (error) {
+      console.error('Failed to load processing logs:', error);
+    }
+  };
+
+  const handleManualTrigger = async () => {
+    setLoading(true);
+    try {
+      // Try to refresh token first if we have a refresh token
+      let currentAccessToken = user.accessToken;
+      if (user.refreshToken) {
+        try {
+          const refreshResponse = await authAPI.refreshToken(user.uid);
+          currentAccessToken = refreshResponse.data.accessToken;
+          // Update user context with new token
+          const updatedUser = { ...user, accessToken: currentAccessToken };
+          localStorage.setItem('accounti_user', JSON.stringify(updatedUser));
+          window.location.reload(); // Reload to update the user context
+          return;
+        } catch (refreshError) {
+          console.log('Token refresh failed, proceeding with current token');
+        }
+      }
+
+      const response = await invoiceAPI.triggerScheduledProcessing(user.uid, currentAccessToken);
+      
+      if (response.data.success) {
+        await loadInvoices(); // Refresh the invoice list
+        await loadStats(); // Refresh stats
+        await loadSpreadsheetUrl(); // Refresh spreadsheet URL
+        await loadProcessingLogs(); // Refresh processing logs
+        
+        const result = response.data.result;
+        const message = `Scheduled processing completed!\n\nEmails scanned: ${result.emailsScanned}\nInvoices found: ${result.invoicesFound}\nAttachments processed: ${result.attachmentsProcessed}`;
+        
+        if (result.errors && result.errors.length > 0) {
+          alert(`${message}\n\nSome errors occurred:\n${result.errors.slice(0, 3).join('\n')}`);
+        } else {
+          alert(message);
+        }
+      } else {
+        throw new Error('Scheduled processing failed');
+      }
+    } catch (error: any) {
+      console.error('Manual trigger error:', error);
+      if (error.response?.status === 401) {
+        alert('Your session has expired. Please sign in again.');
+        localStorage.removeItem('accounti_user');
+        window.location.reload();
+      } else {
+        alert('Failed to trigger scheduled processing. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -185,6 +249,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 {loading ? 'Scanning...' : 'Fetch New Invoices'}
               </button>
 
+              <button
+                onClick={handleManualTrigger}
+                disabled={loading}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? 'Processing...' : '🔄 Manual Trigger'}
+              </button>
+
               {spreadsheetUrl && (
                 <a
                   href={spreadsheetUrl}
@@ -216,6 +288,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
                       >
                         📊 Update Spreadsheet
+                      </button>
+                      <div className="border-t border-gray-100"></div>
+                      <button
+                        onClick={() => setShowLogs(!showLogs)}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        📋 {showLogs ? 'Hide' : 'Show'} Processing Logs
                       </button>
                       <div className="border-t border-gray-100"></div>
                       <button
@@ -271,6 +350,89 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
           </div>
           <InvoiceTable invoices={invoices} />
         </div>
+
+        {/* Processing Logs */}
+        {showLogs && (
+          <div className="bg-white rounded-lg shadow mt-8">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium">Processing Logs</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Emails Scanned
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Invoices Found
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Duration
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {processingLogs.map((log) => {
+                    const startTime = new Date(log.startTime);
+                    const endTime = new Date(log.endTime);
+                    const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+                    const hasErrors = log.errors && log.errors.length > 0;
+                    
+                    return (
+                      <tr key={log.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {startTime.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            log.triggerType === 'scheduled' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {log.triggerType}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {log.emailsScanned}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {log.invoicesFound}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {duration}s
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            hasErrors 
+                              ? 'bg-yellow-100 text-yellow-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {hasErrors ? `${log.errors.length} errors` : 'Success'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {processingLogs.length === 0 && (
+                <div className="px-6 py-8 text-center text-gray-500">
+                  No processing logs found
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
