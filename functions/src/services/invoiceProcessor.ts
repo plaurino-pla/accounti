@@ -151,7 +151,7 @@ export class InvoiceProcessor {
         return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
       }
 
-      console.log('Using Document AI Invoice Parser processor:', this.processorId);
+      console.log('Using Document AI OCR processor:', this.processorId);
       const projectId = functions.config().google?.project_id || 'accounti-4698b';
       const name = `projects/${projectId}/locations/${this.location}/processors/${this.processorId}`;
       
@@ -166,19 +166,19 @@ export class InvoiceProcessor {
       const [result] = await this.documentAiClient.processDocument(request);
       const { document } = result;
 
-      if (!document?.entities) {
-        console.log('No entities found, falling back to text extraction');
+      if (!document?.text) {
+        console.log('No text extracted, falling back to PDF parsing');
         return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
       }
 
-      console.log('Document AI extracted entities:', document.entities.length);
+      console.log('Document AI OCR extracted text length:', document.text.length);
 
-      // For Invoice Parser, we get structured entities directly
-      const extractedData = this.extractInvoiceDataFromEntities(document.entities);
+      // For Document OCR, we get clean text and apply our enhanced multi-language extraction
+      const extractedData = this.extractInvoiceDataFromText(document.text);
       
       return {
         ...extractedData,
-        confidence: 0.95 // Very high confidence for Invoice Parser
+        confidence: 0.85 // High confidence for Document AI OCR + our extraction
       };
     } catch (error) {
       console.error('Document AI processing failed:', error);
@@ -266,38 +266,86 @@ export class InvoiceProcessor {
     return data;
   }
 
-  // Fallback: Extract invoice data from text using regex patterns
+  // Enhanced multi-language invoice data extraction from text
   private extractInvoiceDataFromText(text: string): Partial<ProcessedInvoice> {
     const data: Partial<ProcessedInvoice> = {};
     
     console.log('Extracting data from text, length:', text.length);
     
-    // Vendor/Company name patterns - look for common company indicators
+    // Multi-language vendor/company name patterns
     const vendorPatterns = [
+      // English patterns
       /from\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
-      /bill\s*to\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /vendor\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /company\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
-      /([A-Za-z0-9\s&.,'-]+(?:LLC|Inc|Corp|Ltd|Co|Company|Corporation))(?:\n|$)/i
+      /supplier\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /([A-Za-z0-9\s&.,'-]+(?:LLC|Inc|Corp|Ltd|Co|Company|Corporation|S\.L\.|S\.A\.|LDA))(?:\n|$)/i,
+      
+      // Spanish patterns
+      /empresa\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /proveedor\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /remitente\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /([A-Za-z0-9\s&.,'-]+(?:S\.L\.|S\.A\.|S\.L\.U\.|C\.B\.))(?:\n|$)/i,
+      
+      // Portuguese patterns
+      /fornecedor\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /empresa\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /([A-Za-z0-9\s&.,'-]+(?:LDA|Ltda|S\.A\.|S\.L\.))(?:\n|$)/i,
+      
+      // Italian patterns
+      /fornitore\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /società\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /([A-Za-z0-9\s&.,'-]+(?:S\.r\.l\.|S\.p\.A\.|S\.n\.c\.))(?:\n|$)/i,
+      
+      // French patterns
+      /fournisseur\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /société\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /([A-Za-z0-9\s&.,'-]+(?:S\.A\.|S\.A\.S\.|S\.A\.R\.L\.))(?:\n|$)/i,
+      
+      // Generic company name detection (look for all caps company names)
+      /([A-Z][A-Z\s&.,'-]{3,}(?:S\.L\.|S\.A\.|LDA|Ltda|LLC|Inc|Corp|Ltd|Co|Company|Corporation))(?:\n|$)/i
     ];
     
     for (const pattern of vendorPatterns) {
       const match = text.match(pattern);
-      if (match && match[1] && match[1].trim().length > 2) {
+      if (match && match[1] && match[1].trim().length > 3) {
         data.vendorName = match[1].trim();
         console.log('Found vendor:', data.vendorName);
         break;
       }
     }
     
-    // Invoice number patterns - more comprehensive
+    // Multi-language invoice number patterns
     const invoiceNumberPatterns = [
+      // English patterns
       /invoice\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
       /invoice\s*number\s*:?\s*([A-Z0-9\-_]+)/i,
       /inv\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
-      /factura\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
       /bill\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
-      /#\s*([A-Z0-9\-_]{3,})/i
+      
+      // Spanish patterns
+      /factura\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
+      /nº?\s*factura\s*:?\s*([A-Z0-9\-_]+)/i,
+      /número\s*factura\s*:?\s*([A-Z0-9\-_]+)/i,
+      
+      // Portuguese patterns
+      /fatura\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
+      /nº?\s*fatura\s*:?\s*([A-Z0-9\-_]+)/i,
+      /número\s*fatura\s*:?\s*([A-Z0-9\-_]+)/i,
+      
+      // Italian patterns
+      /fattura\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
+      /nº?\s*fattura\s*:?\s*([A-Z0-9\-_]+)/i,
+      /numero\s*fattura\s*:?\s*([A-Z0-9\-_]+)/i,
+      
+      // French patterns
+      /facture\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
+      /nº?\s*facture\s*:?\s*([A-Z0-9\-_]+)/i,
+      /numéro\s*facture\s*:?\s*([A-Z0-9\-_]+)/i,
+      
+      // Generic patterns
+      /#\s*([A-Z0-9\-_]{3,})/i,
+      /nº\s*([A-Z0-9\-_]+)/i
     ];
     
     for (const pattern of invoiceNumberPatterns) {
@@ -309,14 +357,39 @@ export class InvoiceProcessor {
       }
     }
     
-    // Amount patterns - more comprehensive
+    // Multi-language amount patterns with currency support
     const amountPatterns = [
+      // English patterns
       /total\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
       /amount\s*due\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
       /balance\s*due\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
       /grand\s*total\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
       /total\s*amount\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
-      /\$\s*([0-9,]+\.?[0-9]{2})/g // Find all dollar amounts
+      
+      // Spanish patterns
+      /total\s*factura\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /importe\s*total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      
+      // Portuguese patterns
+      /total\s*fatura\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /valor\s*total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      
+      // Italian patterns
+      /totale\s*fattura\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /importo\s*totale\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /totale\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      
+      // French patterns
+      /total\s*facture\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /montant\s*total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      
+      // Currency patterns
+      /\$\s*([0-9,]+\.?[0-9]{2})/g, // Dollar amounts
+      /€\s*([0-9,]+\.?[0-9]{2})/g, // Euro amounts
+      /£\s*([0-9,]+\.?[0-9]{2})/g  // Pound amounts
     ];
     
     for (const pattern of amountPatterns) {
@@ -328,11 +401,30 @@ export class InvoiceProcessor {
       }
     }
     
-    // Date patterns - more comprehensive
+    // Multi-language date patterns
     const datePatterns = [
+      // English patterns
       /invoice\s*date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /issued\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // Spanish patterns
+      /fecha\s*factura\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /fecha\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // Portuguese patterns
+      /data\s*fatura\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /data\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // Italian patterns
+      /data\s*fattura\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /data\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // French patterns
+      /date\s*facture\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // Generic patterns
       /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})/g, // Any date pattern
       /(\w+\s+\d{1,2},?\s+\d{4})/g // Month DD, YYYY format
     ];
@@ -349,10 +441,27 @@ export class InvoiceProcessor {
       }
     }
     
-    // Due date patterns
+    // Multi-language due date patterns
     const dueDatePatterns = [
+      // English patterns
       /due\s*date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
-      /payment\s*due\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i
+      /payment\s*due\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // Spanish patterns
+      /fecha\s*vencimiento\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /vencimiento\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // Portuguese patterns
+      /data\s*vencimento\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /vencimento\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // Italian patterns
+      /data\s*scadenza\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /scadenza\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      
+      // French patterns
+      /date\s*échéance\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /échéance\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i
     ];
     
     for (const pattern of dueDatePatterns) {
@@ -365,6 +474,15 @@ export class InvoiceProcessor {
           break;
         }
       }
+    }
+    
+    // Currency detection
+    if (text.includes('€') || text.includes('EUR')) {
+      data.currency = 'EUR';
+    } else if (text.includes('$') || text.includes('USD')) {
+      data.currency = 'USD';
+    } else if (text.includes('£') || text.includes('GBP')) {
+      data.currency = 'GBP';
     }
     
     console.log('Extracted data:', data);
