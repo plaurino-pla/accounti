@@ -149,11 +149,13 @@ export class InvoiceProcessor {
     try {
       // First, try GPT-4 Vision for multi-lingual support
       try {
-        console.log('Attempting GPT-4 Vision processing for multi-lingual support');
+        console.log('=== ATTEMPTING GPT-4 VISION ===');
+        console.log('Buffer size:', buffer.length, 'bytes');
         const gptService = new GPTVisionService();
         const gptData = await gptService.extractInvoiceDataFromImage(buffer);
         
-        console.log('GPT-4 Vision processing successful');
+        console.log('=== GPT-4 VISION SUCCESS ===');
+        console.log('Extracted data:', gptData);
         return {
           vendorName: gptData.vendorName,
           invoiceNumber: gptData.invoiceNumber,
@@ -165,7 +167,9 @@ export class InvoiceProcessor {
           confidence: gptData.confidence
         };
       } catch (gptError) {
-        console.log('GPT-4 Vision failed, falling back to Document AI:', (gptError as Error).message);
+        console.log('=== GPT-4 VISION FAILED ===');
+        console.log('Error message:', (gptError as Error).message);
+        console.log('Falling back to Document AI...');
       }
 
       // Fallback to Document AI if GPT-4 Vision fails

@@ -25,9 +25,11 @@ export class GPTVisionService {
 
   async extractInvoiceDataFromImage(imageBuffer: Buffer): Promise<GPTExtractedData> {
     try {
-      console.log('Using GPT-4 Vision for multi-lingual invoice processing');
+      console.log('=== GPT-4 VISION PROCESSING START ===');
+      console.log('Image buffer size:', imageBuffer.length, 'bytes');
       
       const base64Image = imageBuffer.toString('base64');
+      console.log('Base64 image length:', base64Image.length);
       
       const prompt = `
 You are an expert invoice data extractor. Analyze this invoice and extract the following information in JSON format:
@@ -55,6 +57,7 @@ Important guidelines:
 Return ONLY the JSON object, no additional text.
 `;
 
+      console.log('Sending request to OpenAI GPT-4 Vision...');
       const response = await this.openai.chat.completions.create({
         model: "gpt-4-vision-preview",
         messages: [
@@ -78,6 +81,7 @@ Return ONLY the JSON object, no additional text.
         max_tokens: 1000,
         temperature: 0.1
       });
+      console.log('OpenAI response received');
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
@@ -97,7 +101,11 @@ Return ONLY the JSON object, no additional text.
       };
 
     } catch (error) {
-      console.error('GPT-4 Vision processing failed:', error);
+      console.error('=== GPT-4 VISION PROCESSING FAILED ===');
+      console.error('Error type:', typeof error);
+      console.error('Error message:', (error as Error).message);
+      console.error('Error stack:', (error as Error).stack);
+      console.error('Full error object:', JSON.stringify(error, null, 2));
       throw error;
     }
   }
