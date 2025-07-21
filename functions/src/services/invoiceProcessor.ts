@@ -228,50 +228,104 @@ export class InvoiceProcessor {
   private extractInvoiceDataFromText(text: string): Partial<ProcessedInvoice> {
     const data: Partial<ProcessedInvoice> = {};
     
-    // Invoice number patterns
+    console.log('Extracting data from text, length:', text.length);
+    
+    // Vendor/Company name patterns - look for common company indicators
+    const vendorPatterns = [
+      /from\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /bill\s*to\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /vendor\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /company\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /([A-Za-z0-9\s&.,'-]+(?:LLC|Inc|Corp|Ltd|Co|Company|Corporation))(?:\n|$)/i
+    ];
+    
+    for (const pattern of vendorPatterns) {
+      const match = text.match(pattern);
+      if (match && match[1] && match[1].trim().length > 2) {
+        data.vendorName = match[1].trim();
+        console.log('Found vendor:', data.vendorName);
+        break;
+      }
+    }
+    
+    // Invoice number patterns - more comprehensive
     const invoiceNumberPatterns = [
       /invoice\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
       /invoice\s*number\s*:?\s*([A-Z0-9\-_]+)/i,
-      /inv\s*#?\s*:?\s*([A-Z0-9\-_]+)/i
+      /inv\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
+      /factura\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
+      /bill\s*#?\s*:?\s*([A-Z0-9\-_]+)/i,
+      /#\s*([A-Z0-9\-_]{3,})/i
     ];
     
     for (const pattern of invoiceNumberPatterns) {
       const match = text.match(pattern);
-      if (match) {
-        data.invoiceNumber = match[1];
+      if (match && match[1]) {
+        data.invoiceNumber = match[1].trim();
+        console.log('Found invoice number:', data.invoiceNumber);
         break;
       }
     }
     
-    // Amount patterns
+    // Amount patterns - more comprehensive
     const amountPatterns = [
-      /total\s*:?\s*\$?([0-9,]+\.?[0-9]*)/i,
-      /amount\s*:?\s*\$?([0-9,]+\.?[0-9]*)/i,
-      /balance\s*due\s*:?\s*\$?([0-9,]+\.?[0-9]*)/i
+      /total\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
+      /amount\s*due\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
+      /balance\s*due\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
+      /grand\s*total\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
+      /total\s*amount\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
+      /\$\s*([0-9,]+\.?[0-9]{2})/g // Find all dollar amounts
     ];
     
     for (const pattern of amountPatterns) {
       const match = text.match(pattern);
-      if (match) {
+      if (match && match[1]) {
         data.amount = this.parseAmount(match[1]);
+        console.log('Found amount:', data.amount);
         break;
       }
     }
     
-    // Date patterns
+    // Date patterns - more comprehensive
     const datePatterns = [
-      /date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-      /invoice\s*date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i
+      /invoice\s*date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /issued\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})/g, // Any date pattern
+      /(\w+\s+\d{1,2},?\s+\d{4})/g // Month DD, YYYY format
     ];
     
     for (const pattern of datePatterns) {
       const match = text.match(pattern);
-      if (match) {
-        data.issueDate = this.parseDate(match[1]);
-        break;
+      if (match && match[1]) {
+        const parsedDate = this.parseDate(match[1]);
+        if (parsedDate) {
+          data.issueDate = parsedDate;
+          console.log('Found date:', data.issueDate);
+          break;
+        }
       }
     }
     
+    // Due date patterns
+    const dueDatePatterns = [
+      /due\s*date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /payment\s*due\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i
+    ];
+    
+    for (const pattern of dueDatePatterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        const parsedDate = this.parseDate(match[1]);
+        if (parsedDate) {
+          data.dueDate = parsedDate;
+          console.log('Found due date:', data.dueDate);
+          break;
+        }
+      }
+    }
+    
+    console.log('Extracted data:', data);
     return data;
   }
 
