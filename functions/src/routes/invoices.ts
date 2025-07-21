@@ -63,22 +63,29 @@ router.post('/scan', async (req, res) => {
             const buffer = await gmailService.downloadAttachment(email.id, attachment.attachmentId);
 
             // Check if it's an invoice
-            const { isInvoice, confidence } = await invoiceProcessor.isInvoiceAttachment(
-              attachment.filename, 
-              buffer
-            );
-
-            if (isInvoice) {
-              // Process and save invoice with Drive and Sheets integration
-              await invoiceProcessor.processAndSaveInvoice(
-                userId,
-                email.id,
-                attachment.attachmentId,
-                attachment.filename,
-                buffer,
-                accessToken
+            try {
+              const { isInvoice, confidence } = await invoiceProcessor.isInvoiceAttachment(
+                attachment.filename, 
+                buffer
               );
-              invoicesFound++;
+
+              if (isInvoice) {
+                // Process and save invoice with Drive and Sheets integration
+                await invoiceProcessor.processAndSaveInvoice(
+                  userId,
+                  email.id,
+                  attachment.attachmentId,
+                  attachment.filename,
+                  buffer,
+                  accessToken
+                );
+                invoicesFound++;
+              }
+            } catch (invoiceError) {
+              const errorMsg = `Error processing invoice ${attachment.filename}: ${invoiceError}`;
+              console.error(errorMsg);
+              errors.push(errorMsg);
+              // Continue with other attachments
             }
 
           } catch (attachmentError) {

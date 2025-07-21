@@ -89,17 +89,27 @@ export class InvoiceProcessor {
   // Extract text from buffer (PDF or image)
   private async extractTextFromBuffer(buffer: Buffer): Promise<string> {
     try {
-      // Try PDF parsing first
-      const pdfData = await pdfParse(buffer);
-      return pdfData.text || '';
-    } catch (error) {
-      // If PDF parsing fails, try Document AI
-      try {
-        return await this.extractTextWithDocumentAI(buffer);
-      } catch (docAiError) {
-        console.error('Both PDF parsing and Document AI failed:', error, docAiError);
+      // Check if buffer is valid
+      if (!buffer || buffer.length === 0) {
+        console.log('Empty or invalid buffer provided');
         return '';
       }
+
+      // Try PDF parsing first
+      try {
+        const pdfData = await pdfParse(buffer, {
+          // Add options to handle different PDF formats
+          max: 0 // No page limit
+        });
+        return pdfData.text || '';
+      } catch (pdfError) {
+        console.log('PDF parsing failed, trying Document AI:', (pdfError as Error).message);
+        // If PDF parsing fails, try Document AI
+        return await this.extractTextWithDocumentAI(buffer);
+      }
+    } catch (error) {
+      console.error('Error extracting text from buffer:', error);
+      return '';
     }
   }
 
