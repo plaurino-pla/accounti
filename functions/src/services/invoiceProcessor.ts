@@ -151,7 +151,7 @@ export class InvoiceProcessor {
         return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
       }
 
-      console.log('Using Document AI processor:', this.processorId);
+      console.log('Using Document AI Custom Extractor processor:', this.processorId);
       const projectId = functions.config().google?.project_id || 'accounti-4698b';
       const name = `projects/${projectId}/locations/${this.location}/processors/${this.processorId}`;
       
@@ -166,19 +166,19 @@ export class InvoiceProcessor {
       const [result] = await this.documentAiClient.processDocument(request);
       const { document } = result;
 
-      if (!document?.text) {
-        throw new Error('No text extracted from document');
+      if (!document?.entities) {
+        console.log('No entities found, falling back to text extraction');
+        return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
       }
 
-      console.log('Document AI extracted text length:', document.text.length);
+      console.log('Document AI extracted entities:', document.entities.length);
 
-      // For Document OCR, we get text but not structured entities
-      // So we use our enhanced text extraction on the OCR'd text
-      const extractedData = this.extractInvoiceDataFromText(document.text);
+      // For Custom Extractor, we get structured entities directly
+      const extractedData = this.extractInvoiceDataFromEntities(document.entities);
       
       return {
         ...extractedData,
-        confidence: 0.9 // Higher confidence for Document AI OCR + our text extraction
+        confidence: 0.95 // Very high confidence for Custom Extractor
       };
     } catch (error) {
       console.error('Document AI processing failed:', error);
@@ -191,43 +191,68 @@ export class InvoiceProcessor {
   private extractInvoiceDataFromEntities(entities: any[]): Partial<ProcessedInvoice> {
     const data: Partial<ProcessedInvoice> = {};
     
+    console.log('Processing entities:', entities.length);
+    
     for (const entity of entities) {
       const type = entity.type?.toLowerCase();
       const text = entity.mentionText;
       const confidence = entity.confidence || 0;
       
+      console.log(`Entity: ${type} = "${text}" (confidence: ${confidence})`);
+      
       switch (type) {
         case 'invoice_id':
         case 'invoice_number':
+        case 'invoice_number':
+        case 'inv_number':
+        case 'bill_number':
           data.invoiceNumber = text;
           break;
         case 'supplier_name':
         case 'vendor_name':
         case 'company_name':
+        case 'business_name':
+        case 'seller_name':
+        case 'from':
+        case 'bill_from':
           data.vendorName = text;
           break;
         case 'invoice_date':
         case 'issue_date':
+        case 'date':
+        case 'billing_date':
+        case 'created_date':
           data.issueDate = this.parseDate(text);
           break;
         case 'due_date':
+        case 'payment_due_date':
+        case 'due':
           data.dueDate = this.parseDate(text);
           break;
         case 'total_amount':
         case 'invoice_amount':
         case 'amount':
+        case 'total':
+        case 'grand_total':
+        case 'balance_due':
+        case 'amount_due':
           data.amount = this.parseAmount(text);
           break;
         case 'currency':
+        case 'currency_code':
           data.currency = text;
           break;
         case 'tax_amount':
         case 'vat_amount':
+        case 'tax':
+        case 'gst':
+        case 'hst':
           data.taxAmount = this.parseAmount(text);
           break;
       }
     }
     
+    console.log('Extracted data from entities:', data);
     return data;
   }
 
