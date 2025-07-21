@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { User, Invoice, InvoiceStats } from '../types/invoice';
+import { useAuth } from '../contexts/AuthContext';
+import { User, Invoice, InvoiceStats, invoiceAPI, accountAPI, sheetsAPI, driveAPI } from '../services/api';
 import InvoiceTable from './InvoiceTable';
 
 interface DashboardProps {
   user: User;
-  onSignOut: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
+const Dashboard: React.FC<DashboardProps> = ({ user }) => {
+  const { signOut } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [stats, setStats] = useState<InvoiceStats>({
     totalInvoices: 0,
@@ -17,63 +18,59 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
   });
   const [loading, setLoading] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
 
   useEffect(() => {
     loadInvoices();
-  }, []);
+    loadStats();
+    loadSpreadsheetUrl();
+  }, [user.uid]);
 
   const loadInvoices = async () => {
     try {
-      // TODO: Replace with actual API call
-      // const response = await fetch(`/api/invoices/${user.uid}`);
-      // const data = await response.json();
-      // setInvoices(data.invoices || []);
-      
-      // Temporary mock data
-      setInvoices([]);
-      calculateStats([]);
+      const response = await invoiceAPI.getUserInvoices(user.uid);
+      setInvoices(response.data.invoices || []);
     } catch (error) {
       console.error('Failed to load invoices:', error);
     }
   };
 
-  const calculateStats = (invoiceList: Invoice[]) => {
-    const totalAmount = invoiceList.reduce((sum, inv) => sum + (inv.amount || 0), 0);
-    const vendorBreakdown = invoiceList.reduce((acc, inv) => {
-      const vendor = inv.vendorName || 'Unknown';
-      acc[vendor] = (acc[vendor] || 0) + (inv.amount || 0);
-      return acc;
-    }, {} as Record<string, number>);
+  const loadStats = async () => {
+    try {
+      const response = await invoiceAPI.getInvoiceStats(user.uid);
+      setStats(response.data);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    }
+  };
 
-    setStats({
-      totalInvoices: invoiceList.length,
-      totalAmount,
-      averageAmount: invoiceList.length > 0 ? totalAmount / invoiceList.length : 0,
-      lastScan: user.lastProcessedTimestamp,
-      vendorBreakdown
-    });
+  const loadSpreadsheetUrl = async () => {
+    try {
+      const response = await sheetsAPI.getSpreadsheetUrl(user.uid, user.accessToken);
+      setSpreadsheetUrl(response.data.url);
+    } catch (error) {
+      console.error('Failed to load spreadsheet URL:', error);
+    }
   };
 
   const handleFetchInvoices = async () => {
     setLoading(true);
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch('https://us-central1-accounti-4698b.cloudfunctions.net/api/invoices/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          accessToken: user.accessToken
-        })
-      });
-
-      const data = await response.json();
+      const response = await invoiceAPI.scanInvoices(user.uid, user.accessToken);
       
-      if (data.success) {
+      if (response.data.success) {
         await loadInvoices(); // Refresh the invoice list
-        alert(`Scan complete! Found ${data.invoicesFound} new invoices.`);
+        await loadStats(); // Refresh stats
+        await loadSpreadsheetUrl(); // Refresh spreadsheet URL
+        
+        const message = `Scan complete! Found ${response.data.invoicesFound} new invoices from ${response.data.emailsScanned} emails.`;
+        if (response.data.errors && response.data.errors.length > 0) {
+          alert(`${message}\n\nSome errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`);
+        } else {
+          alert(message);
+        }
       } else {
-        throw new Error(data.error || 'Scan failed');
+        throw new Error('Scan failed');
       }
     } catch (error) {
       console.error('Fetch invoices error:', error);
@@ -96,21 +93,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     if (!confirmed) return;
 
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch(`https://us-central1-accounti-4698b.cloudfunctions.net/api/account/clear-data`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid })
-      });
-
-      const data = await response.json();
+      const response = await accountAPI.clearAllData(user.uid, user.accessToken);
       
-      if (data.success) {
+      if (response.data.success) {
         setInvoices([]);
-        calculateStats([]);
-        alert('All data cleared successfully.');
+        setStats({
+          totalInvoices: 0,
+          totalAmount: 0,
+          averageAmount: 0,
+          vendorBreakdown: {}
+        });
+        setSpreadsheetUrl(null);
+        
+        const message = `All data cleared successfully!\n\nDeleted:\n` +
+          `- ${response.data.deletedInvoices} invoices\n` +
+          `- ${response.data.deletedLogs} processing logs\n` +
+          `- ${response.data.driveFilesDeleted} Drive files\n` +
+          `- Spreadsheet: ${response.data.spreadsheetCleared ? 'Yes' : 'No'}`;
+        
+        alert(message);
       } else {
-        throw new Error(data.error || 'Clear data failed');
+        throw new Error('Clear data failed');
       }
     } catch (error) {
       console.error('Clear data error:', error);
@@ -118,6 +121,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     }
 
     setShowAccountMenu(false);
+  };
+
+  const handleUpdateSpreadsheet = async () => {
+    try {
+      const response = await sheetsAPI.updateSpreadsheet(user.uid, user.accessToken);
+      if (response.data.success) {
+        setSpreadsheetUrl(response.data.url);
+        alert('Spreadsheet updated successfully!');
+      }
+    } catch (error) {
+      console.error('Update spreadsheet error:', error);
+      alert('Failed to update spreadsheet. Please try again.');
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -145,6 +161,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
               >
                 {loading ? 'Scanning...' : 'Fetch New Invoices'}
               </button>
+
+              {spreadsheetUrl && (
+                <a
+                  href={spreadsheetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  📊 View Spreadsheet
+                </a>
+              )}
               
               <div className="flex items-center space-x-3">
                 <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" />
@@ -162,6 +189,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                   {showAccountMenu && (
                     <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 border">
                       <button
+                        onClick={handleUpdateSpreadsheet}
+                        className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        📊 Update Spreadsheet
+                      </button>
+                      <div className="border-t border-gray-100"></div>
+                      <button
                         onClick={handleClearAllData}
                         className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                       >
@@ -169,7 +203,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                       </button>
                       <div className="border-t border-gray-100"></div>
                       <button
-                        onClick={onSignOut}
+                        onClick={signOut}
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
                       >
                         Sign out
@@ -202,7 +236,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
           <div className="bg-white p-6 rounded-lg shadow">
             <h3 className="text-sm font-medium text-gray-500">Last Scan</h3>
             <p className="text-2xl font-bold text-gray-900">
-              {stats.lastScan ? new Date(stats.lastScan).toLocaleDateString() : 'Never'}
+              {user.lastProcessedTimestamp ? new Date(user.lastProcessedTimestamp).toLocaleDateString() : 'Never'}
             </p>
           </div>
         </div>

@@ -1,26 +1,14 @@
 import React, { useState } from 'react';
-import { User } from '../types/invoice';
+import { useAuth } from '../contexts/AuthContext';
 
-interface AuthComponentProps {
-  onSignIn: (user: User) => void;
-}
-
-const AuthComponent: React.FC<AuthComponentProps> = ({ onSignIn }) => {
+const AuthComponent: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const { signIn } = useAuth();
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
-      // TODO: Replace with actual Firebase Functions endpoint
-      const response = await fetch('https://us-central1-accounti-4698b.cloudfunctions.net/api/auth/url');
-      const data = await response.json();
-      
-      if (data.url) {
-        // Redirect to Google OAuth
-        window.location.href = data.url;
-      } else {
-        throw new Error('Failed to get auth URL');
-      }
+      await signIn();
     } catch (error) {
       console.error('Sign in error:', error);
       alert('Sign in failed. Please try again.');

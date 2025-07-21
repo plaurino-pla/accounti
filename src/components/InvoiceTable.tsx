@@ -1,5 +1,5 @@
 import React from 'react';
-import { Invoice } from '../types/invoice';
+import { Invoice } from '../services/api';
 
 interface InvoiceTableProps {
   invoices: Invoice[];

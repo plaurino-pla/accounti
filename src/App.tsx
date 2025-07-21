@@ -1,40 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { User } from './types/invoice';
+import React from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthComponent from './components/AuthComponent';
 import Dashboard from './components/Dashboard';
 
-const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Check for stored user session
-    const checkAuth = async () => {
-      try {
-        // TODO: Implement proper auth check with Firebase
-        const storedUser = localStorage.getItem('accounti_user');
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
-
-  const handleSignIn = async (userData: User) => {
-    setUser(userData);
-    localStorage.setItem('accounti_user', JSON.stringify(userData));
-  };
-
-  const handleSignOut = async () => {
-    setUser(null);
-    localStorage.removeItem('accounti_user');
-  };
+const AppContent: React.FC = () => {
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -47,11 +17,19 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {user ? (
-        <Dashboard user={user} onSignOut={handleSignOut} />
+        <Dashboard user={user} />
       ) : (
-        <AuthComponent onSignIn={handleSignIn} />
+        <AuthComponent />
       )}
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 
