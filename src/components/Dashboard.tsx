@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Invoice, InvoiceStats, invoiceAPI, accountAPI, sheetsAPI, driveAPI } from '../services/api';
+import { User, Invoice, InvoiceStats, invoiceAPI, accountAPI, sheetsAPI, driveAPI, authAPI } from '../services/api';
 import InvoiceTable from './InvoiceTable';
 
 interface DashboardProps {
@@ -56,7 +56,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const handleFetchInvoices = async () => {
     setLoading(true);
     try {
-      const response = await invoiceAPI.scanInvoices(user.uid, user.accessToken);
+      // Try to refresh token first if we have a refresh token
+      let currentAccessToken = user.accessToken;
+      if (user.refreshToken) {
+        try {
+          const refreshResponse = await authAPI.refreshToken(user.uid);
+          currentAccessToken = refreshResponse.data.accessToken;
+          // Update user context with new token
+          const updatedUser = { ...user, accessToken: currentAccessToken };
+          localStorage.setItem('accounti_user', JSON.stringify(updatedUser));
+          window.location.reload(); // Reload to update the user context
+          return;
+        } catch (refreshError) {
+          console.log('Token refresh failed, proceeding with current token');
+        }
+      }
+
+      const response = await invoiceAPI.scanInvoices(user.uid, currentAccessToken);
       
       if (response.data.success) {
         await loadInvoices(); // Refresh the invoice list
@@ -72,9 +88,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       } else {
         throw new Error('Scan failed');
       }
-    } catch (error) {
-      console.error('Fetch invoices error:', error);
-      alert('Failed to fetch invoices. Please try again.');
+    } catch (error: any) {
+      console.error('Scan invoices error:', error);
+      if (error.response?.status === 401) {
+        alert('Your session has expired. Please sign in again.');
+        // Clear user data and redirect to sign in
+        localStorage.removeItem('accounti_user');
+        window.location.reload();
+      } else {
+        alert('Failed to scan for new invoices. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
