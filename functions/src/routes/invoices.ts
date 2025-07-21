@@ -23,7 +23,7 @@ router.post('/scan', async (req, res) => {
     const lastProcessedDate = await gmailService.getLastProcessedTimestamp(userId);
     
     // Get emails with attachments
-    const emails = await gmailService.getEmailsWithAttachments(lastProcessedDate);
+    const emails = await gmailService.getEmailsWithAttachments(lastProcessedDate || undefined);
     
     let invoicesFound = 0;
     let attachmentsProcessed = 0;
@@ -64,25 +64,15 @@ router.post('/scan', async (req, res) => {
             );
 
             if (isInvoice) {
-              // Process the invoice
-              const extractedData = await invoiceProcessor.processInvoiceWithDocumentAI(buffer);
-
-              // Create invoice record
-              const invoice: ProcessedInvoice = {
-                id: `${userId}_${email.id}_${attachment.attachmentId}`,
+              // Process and save invoice with Drive and Sheets integration
+              await invoiceProcessor.processAndSaveInvoice(
                 userId,
-                emailId: email.id,
-                attachmentId: attachment.attachmentId,
-                originalFilename: attachment.filename,
-                confidence,
-                processed: true,
-                createdAt: admin.firestore.Timestamp.now(),
-                updatedAt: admin.firestore.Timestamp.now(),
-                ...extractedData
-              };
-
-              // Save to database
-              await invoiceProcessor.saveInvoiceToDatabase(invoice);
+                email.id,
+                attachment.attachmentId,
+                attachment.filename,
+                buffer,
+                accessToken
+              );
               invoicesFound++;
             }
 

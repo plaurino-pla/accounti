@@ -1,5 +1,7 @@
 import express from 'express';
 import * as admin from 'firebase-admin';
+import { DriveService } from '../services/driveService';
+import { SheetsService } from '../services/sheetsService';
 
 const router = express.Router();
 const db = admin.firestore();
@@ -7,10 +9,27 @@ const db = admin.firestore();
 // Clear all user data
 router.delete('/clear-data', async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId, accessToken } = req.body;
     
     if (!userId) {
       return res.status(400).json({ error: 'Missing userId' });
+    }
+
+    let driveFilesDeleted = 0;
+    let spreadsheetCleared = false;
+
+    // Clear Drive files if access token provided
+    if (accessToken) {
+      try {
+        const driveService = new DriveService(accessToken);
+        driveFilesDeleted = await driveService.clearAllInvoiceFiles(userId);
+        
+        const sheetsService = new SheetsService(accessToken);
+        await sheetsService.deleteSpreadsheet(userId);
+        spreadsheetCleared = true;
+      } catch (driveError) {
+        console.error('Error clearing Drive/Sheets data:', driveError);
+      }
     }
 
     // Delete all user's invoices
@@ -29,9 +48,11 @@ router.delete('/clear-data', async (req, res) => {
     const logDeletes = logsSnapshot.docs.map(doc => doc.ref.delete());
     await Promise.all(logDeletes);
 
-    // Reset user's last processed timestamp
+    // Reset user's last processed timestamp and clear Drive/Sheets IDs
     await db.collection('users').doc(userId).update({
       lastProcessedTimestamp: null,
+      driveFolder: null,
+      spreadsheetId: null,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
@@ -39,7 +60,9 @@ router.delete('/clear-data', async (req, res) => {
       success: true,
       message: 'All data cleared successfully',
       deletedInvoices: invoicesSnapshot.docs.length,
-      deletedLogs: logsSnapshot.docs.length
+      deletedLogs: logsSnapshot.docs.length,
+      driveFilesDeleted,
+      spreadsheetCleared
     });
 
   } catch (error) {

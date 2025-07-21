@@ -1,6 +1,8 @@
 import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
 import pdfParse from 'pdf-parse';
 import * as admin from 'firebase-admin';
+import { DriveService } from './driveService';
+import { SheetsService, SheetRow } from './sheetsService';
 
 const db = admin.firestore();
 
@@ -153,7 +155,7 @@ export class InvoiceProcessor {
       
       return {
         ...extractedData,
-        confidence: document.confidence || 0.5
+        confidence: 0.8 // Default confidence for Document AI processing
       };
     } catch (error) {
       console.error('Document AI processing failed:', error);
@@ -281,6 +283,66 @@ export class InvoiceProcessor {
       await db.collection('invoices').doc(invoice.id).set(invoice);
     } catch (error) {
       console.error('Error saving invoice to database:', error);
+      throw error;
+    }
+  }
+
+  // Process and save invoice with Drive and Sheets integration
+  async processAndSaveInvoice(
+    userId: string,
+    emailId: string,
+    attachmentId: string,
+    filename: string,
+    buffer: Buffer,
+    accessToken: string
+  ): Promise<ProcessedInvoice> {
+    try {
+      // Process the invoice
+      const extractedData = await this.processInvoiceWithDocumentAI(buffer);
+      
+      // Initialize services
+      const driveService = new DriveService(accessToken);
+      const sheetsService = new SheetsService(accessToken);
+
+      // Upload to Drive
+      const driveFile = await driveService.uploadInvoiceFile(userId, filename, buffer);
+      
+      // Create invoice record
+      const invoice: ProcessedInvoice = {
+        id: `${userId}_${emailId}_${attachmentId}`,
+        userId,
+        emailId,
+        attachmentId,
+        originalFilename: filename,
+        driveFileId: driveFile.id,
+        driveLink: driveFile.webViewLink,
+        confidence: extractedData.confidence || 0.5,
+        processed: true,
+        createdAt: admin.firestore.Timestamp.now(),
+        updatedAt: admin.firestore.Timestamp.now(),
+        ...extractedData
+      };
+
+      // Save to database
+      await this.saveInvoiceToDatabase(invoice);
+
+      // Add to spreadsheet
+      const sheetRow: SheetRow = {
+        invoiceNumber: invoice.invoiceNumber || '',
+        vendorName: invoice.vendorName || '',
+        issueDate: invoice.issueDate ? new Date(invoice.issueDate).toLocaleDateString() : '',
+        dueDate: invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : '',
+        amount: invoice.amount || 0,
+        currency: invoice.currency || 'USD',
+        driveLink: driveFile.webViewLink,
+        processedDate: new Date().toLocaleDateString()
+      };
+
+      await sheetsService.addInvoiceRow(userId, sheetRow);
+
+      return invoice;
+    } catch (error) {
+      console.error('Error processing and saving invoice:', error);
       throw error;
     }
   }

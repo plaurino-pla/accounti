@@ -10,6 +10,8 @@ admin.initializeApp();
 import authRoutes from './routes/auth';
 import invoiceRoutes from './routes/invoices';
 import accountRoutes from './routes/account';
+import driveRoutes from './routes/drive';
+import sheetsRoutes from './routes/sheets';
 
 const app = express();
 
@@ -22,6 +24,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/auth', authRoutes);
 app.use('/invoices', invoiceRoutes);
 app.use('/account', accountRoutes);
+app.use('/drive', driveRoutes);
+app.use('/sheets', sheetsRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
