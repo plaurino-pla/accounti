@@ -4,6 +4,7 @@ import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { DriveService } from './driveService';
 import { SheetsService, SheetRow } from './sheetsService';
+import { GPTVisionService, GPTExtractedData } from './gptVisionService';
 
 const db = admin.firestore();
 
@@ -146,6 +147,28 @@ export class InvoiceProcessor {
   // Process invoice with Document AI
   async processInvoiceWithDocumentAI(buffer: Buffer): Promise<Partial<ProcessedInvoice>> {
     try {
+      // First, try GPT-4 Vision for multi-lingual support
+      try {
+        console.log('Attempting GPT-4 Vision processing for multi-lingual support');
+        const gptService = new GPTVisionService();
+        const gptData = await gptService.extractInvoiceDataFromImage(buffer);
+        
+        console.log('GPT-4 Vision processing successful');
+        return {
+          vendorName: gptData.vendorName,
+          invoiceNumber: gptData.invoiceNumber,
+          issueDate: gptData.issueDate ? new Date(gptData.issueDate) : undefined,
+          dueDate: gptData.dueDate ? new Date(gptData.dueDate) : undefined,
+          amount: gptData.amount,
+          currency: gptData.currency,
+          taxAmount: gptData.taxAmount,
+          confidence: gptData.confidence
+        };
+      } catch (gptError) {
+        console.log('GPT-4 Vision failed, falling back to Document AI:', (gptError as Error).message);
+      }
+
+      // Fallback to Document AI if GPT-4 Vision fails
       if (!this.processorId) {
         console.log('Document AI processor ID not configured, using text extraction');
         return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
@@ -166,20 +189,37 @@ export class InvoiceProcessor {
       const [result] = await this.documentAiClient.processDocument(request);
       const { document } = result;
 
-      if (!document?.text) {
-        console.log('No text extracted, falling back to PDF parsing');
+      if (!document) {
+        console.log('No document returned, falling back to text extraction');
         return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
       }
 
-      console.log('Document AI OCR extracted text length:', document.text.length);
+      console.log('Document AI processing completed');
+      console.log('Document entities found:', document.entities?.length || 0);
 
-      // For Document OCR, we get clean text and apply our enhanced multi-language extraction
-      const extractedData = this.extractInvoiceDataFromText(document.text);
-      
-      return {
-        ...extractedData,
-        confidence: 0.85 // High confidence for Document AI OCR + our extraction
-      };
+      // If we have entities (Invoice Parser), use them
+      if (document.entities && document.entities.length > 0) {
+        console.log('Using Document AI Invoice Parser entities');
+        const extractedData = this.extractInvoiceDataFromEntities(document.entities);
+        return {
+          ...extractedData,
+          confidence: 0.8 // Good confidence for Invoice Parser
+        };
+      }
+
+      // If we have text but no entities (OCR), use text extraction
+      if (document.text) {
+        console.log('Using Document AI OCR text extraction');
+        const extractedData = this.extractInvoiceDataFromText(document.text);
+        return {
+          ...extractedData,
+          confidence: 0.6 // Medium confidence for OCR + regex
+        };
+      }
+
+      // Fallback to PDF parsing
+      console.log('Falling back to PDF text extraction');
+      return this.extractInvoiceDataFromText(await this.extractTextFromBuffer(buffer));
     } catch (error) {
       console.error('Document AI processing failed:', error);
       // Fallback to PDF text extraction
@@ -191,7 +231,8 @@ export class InvoiceProcessor {
   private extractInvoiceDataFromEntities(entities: any[]): Partial<ProcessedInvoice> {
     const data: Partial<ProcessedInvoice> = {};
     
-    console.log('Processing entities:', entities.length);
+    console.log('=== PROCESSING DOCUMENT AI ENTITIES ===');
+    console.log('Total entities found:', entities.length);
     
     for (const entity of entities) {
       const type = entity.type?.toLowerCase();
@@ -202,14 +243,20 @@ export class InvoiceProcessor {
       
       // Google's Invoice Parser uses these standard entity types
       switch (type) {
+        // Invoice Number
         case 'invoice_id':
-        case 'invoice_number':
         case 'invoice_number':
         case 'inv_number':
         case 'bill_number':
-        case 'invoice_id':
-          data.invoiceNumber = text;
+        case 'document_id':
+        case 'reference_number':
+          if (!data.invoiceNumber) {
+            data.invoiceNumber = text;
+            console.log('✅ Found invoice number:', text);
+          }
           break;
+          
+        // Vendor/Supplier Name
         case 'supplier_name':
         case 'vendor_name':
         case 'company_name':
@@ -219,22 +266,42 @@ export class InvoiceProcessor {
         case 'bill_from':
         case 'supplier':
         case 'vendor':
-          data.vendorName = text;
+        case 'merchant_name':
+        case 'issuer_name':
+          if (!data.vendorName) {
+            data.vendorName = text;
+            console.log('✅ Found vendor name:', text);
+          }
           break;
+          
+        // Invoice Date
         case 'invoice_date':
         case 'issue_date':
         case 'date':
         case 'billing_date':
         case 'created_date':
-        case 'invoice_date':
-          data.issueDate = this.parseDate(text);
+        case 'document_date':
+        case 'issue_date':
+          if (!data.issueDate) {
+            data.issueDate = this.parseDate(text);
+            console.log('✅ Found issue date:', data.issueDate);
+          }
           break;
+          
+        // Due Date
         case 'due_date':
         case 'payment_due_date':
         case 'due':
         case 'due_date':
-          data.dueDate = this.parseDate(text);
+        case 'payment_date':
+        case 'expiry_date':
+          if (!data.dueDate) {
+            data.dueDate = this.parseDate(text);
+            console.log('✅ Found due date:', data.dueDate);
+          }
           break;
+          
+        // Total Amount
         case 'total_amount':
         case 'invoice_amount':
         case 'amount':
@@ -242,27 +309,62 @@ export class InvoiceProcessor {
         case 'grand_total':
         case 'balance_due':
         case 'amount_due':
-        case 'total_amount':
-        case 'invoice_amount':
-          data.amount = this.parseAmount(text);
+        case 'net_amount':
+        case 'final_amount':
+          if (!data.amount) {
+            data.amount = this.parseAmount(text);
+            console.log('✅ Found amount:', data.amount);
+          }
           break;
+          
+        // Currency
         case 'currency':
         case 'currency_code':
-        case 'currency':
-          data.currency = text;
+        case 'currency_type':
+        case 'currency_symbol':
+          if (!data.currency) {
+            data.currency = text.toUpperCase();
+            console.log('✅ Found currency:', data.currency);
+          }
           break;
+          
+        // Tax Amount
         case 'tax_amount':
         case 'vat_amount':
         case 'tax':
         case 'gst':
         case 'hst':
-        case 'tax_amount':
-          data.taxAmount = this.parseAmount(text);
+        case 'tax_total':
+        case 'vat_total':
+          if (!data.taxAmount) {
+            data.taxAmount = this.parseAmount(text);
+            console.log('✅ Found tax amount:', data.taxAmount);
+          }
+          break;
+          
+        // Subtotal
+        case 'subtotal':
+        case 'sub_total':
+        case 'base_amount':
+          // Only use subtotal if we don't have a total amount
+          if (!data.amount) {
+            data.amount = this.parseAmount(text);
+            console.log('✅ Found subtotal as amount:', data.amount);
+          }
           break;
       }
     }
     
-    console.log('Extracted data from entities:', data);
+    console.log('=== ENTITY EXTRACTION SUMMARY ===');
+    console.log('Vendor Name:', data.vendorName || 'NOT FOUND');
+    console.log('Invoice Number:', data.invoiceNumber || 'NOT FOUND');
+    console.log('Amount:', data.amount || 'NOT FOUND');
+    console.log('Currency:', data.currency || 'NOT FOUND');
+    console.log('Issue Date:', data.issueDate || 'NOT FOUND');
+    console.log('Due Date:', data.dueDate || 'NOT FOUND');
+    console.log('Tax Amount:', data.taxAmount || 'NOT FOUND');
+    console.log('================================');
+    
     return data;
   }
 
@@ -270,40 +372,51 @@ export class InvoiceProcessor {
   private extractInvoiceDataFromText(text: string): Partial<ProcessedInvoice> {
     const data: Partial<ProcessedInvoice> = {};
     
-    console.log('Extracting data from text, length:', text.length);
+    console.log('=== EXTRACTING INVOICE DATA ===');
+    console.log('Text length:', text.length);
+    console.log('First 500 characters:', text.substring(0, 500));
     
-    // Multi-language vendor/company name patterns
+    // Multi-language vendor/company name patterns (enhanced)
     const vendorPatterns = [
       // English patterns
       /from\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /vendor\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /company\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /supplier\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /bill\s*from\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /invoice\s*from\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /([A-Za-z0-9\s&.,'-]+(?:LLC|Inc|Corp|Ltd|Co|Company|Corporation|S\.L\.|S\.A\.|LDA))(?:\n|$)/i,
       
       // Spanish patterns
       /empresa\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /proveedor\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /remitente\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /factura\s*de\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /([A-Za-z0-9\s&.,'-]+(?:S\.L\.|S\.A\.|S\.L\.U\.|C\.B\.))(?:\n|$)/i,
       
       // Portuguese patterns
       /fornecedor\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /empresa\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /fatura\s*de\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /([A-Za-z0-9\s&.,'-]+(?:LDA|Ltda|S\.A\.|S\.L\.))(?:\n|$)/i,
       
       // Italian patterns
       /fornitore\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /società\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /fattura\s*di\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /([A-Za-z0-9\s&.,'-]+(?:S\.r\.l\.|S\.p\.A\.|S\.n\.c\.))(?:\n|$)/i,
       
       // French patterns
       /fournisseur\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /société\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+      /facture\s*de\s*:?\s*([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
       /([A-Za-z0-9\s&.,'-]+(?:S\.A\.|S\.A\.S\.|S\.A\.R\.L\.))(?:\n|$)/i,
       
       // Generic company name detection (look for all caps company names)
-      /([A-Z][A-Z\s&.,'-]{3,}(?:S\.L\.|S\.A\.|LDA|Ltda|LLC|Inc|Corp|Ltd|Co|Company|Corporation))(?:\n|$)/i
+      /([A-Z][A-Z\s&.,'-]{3,}(?:S\.L\.|S\.A\.|LDA|Ltda|LLC|Inc|Corp|Ltd|Co|Company|Corporation))(?:\n|$)/i,
+      
+      // Look for company names in header area (first 1000 characters)
+      /^([A-Z][A-Za-z0-9\s&.,'-]{5,}(?:S\.L\.|S\.A\.|LDA|Ltda|LLC|Inc|Corp|Ltd|Co|Company|Corporation))/m
     ];
     
     for (const pattern of vendorPatterns) {
@@ -357,7 +470,7 @@ export class InvoiceProcessor {
       }
     }
     
-    // Multi-language amount patterns with currency support
+    // Multi-language amount patterns with currency support (enhanced)
     const amountPatterns = [
       // English patterns
       /total\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
@@ -365,78 +478,137 @@ export class InvoiceProcessor {
       /balance\s*due\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
       /grand\s*total\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
       /total\s*amount\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
+      /subtotal\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
+      /net\s*amount\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)/i,
       
       // Spanish patterns
       /total\s*factura\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       /importe\s*total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       /total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /subtotal\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /importe\s*neto\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       
       // Portuguese patterns
       /total\s*fatura\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       /valor\s*total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       /total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /subtotal\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /valor\s*líquido\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       
       // Italian patterns
       /totale\s*fattura\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       /importo\s*totale\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       /totale\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /subtotale\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /importo\s*netto\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       
       // French patterns
       /total\s*facture\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       /montant\s*total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       /total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /sous-total\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
+      /montant\s*net\s*:?\s*€?\s*([0-9,]+\.?[0-9]*)/i,
       
-      // Currency patterns
+      // Currency patterns (more flexible)
       /\$\s*([0-9,]+\.?[0-9]{2})/g, // Dollar amounts
       /€\s*([0-9,]+\.?[0-9]{2})/g, // Euro amounts
-      /£\s*([0-9,]+\.?[0-9]{2})/g  // Pound amounts
+      /£\s*([0-9,]+\.?[0-9]{2})/g, // Pound amounts
+      
+      // Generic amount patterns (look for any number with currency symbol)
+      /([0-9,]+\.?[0-9]{2})\s*€/g, // Euro after amount
+      /([0-9,]+\.?[0-9]{2})\s*\$/g, // Dollar after amount
+      /([0-9,]+\.?[0-9]{2})\s*£/g, // Pound after amount
+      
+      // Look for the largest amount in the document (often the total)
+      /([0-9,]+\.?[0-9]{2,})/g
     ];
     
+    // Enhanced amount extraction - try to find the best match
+    let bestAmount: number | undefined;
+    let bestPattern = '';
+    
     for (const pattern of amountPatterns) {
-      const match = text.match(pattern);
-      if (match && match[1]) {
-        data.amount = this.parseAmount(match[1]);
-        console.log('Found amount:', data.amount);
-        break;
+      // For matchAll, we need to ensure the pattern has the global flag
+      const globalPattern = pattern.global ? pattern : new RegExp(pattern.source, pattern.flags + 'g');
+      const matches = text.matchAll(globalPattern);
+      for (const match of matches) {
+        if (match && match[1]) {
+          const amount = this.parseAmount(match[1]);
+          if (amount && amount > 0) {
+            // Prefer amounts that are likely totals (larger amounts)
+            if (!bestAmount || amount > bestAmount) {
+              bestAmount = amount;
+              bestPattern = pattern.source;
+            }
+          }
+        }
       }
     }
     
-    // Multi-language date patterns
+    if (bestAmount) {
+      data.amount = bestAmount;
+      console.log('Found amount:', bestAmount, 'using pattern:', bestPattern);
+    }
+    
+    // Multi-language date patterns (enhanced)
     const datePatterns = [
       // English patterns
       /invoice\s*date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /issued\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /billing\s*date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /created\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       
       // Spanish patterns
       /fecha\s*factura\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /fecha\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /emitida\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       
       // Portuguese patterns
       /data\s*fatura\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /data\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /emitida\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       
       // Italian patterns
       /data\s*fattura\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /data\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /emessa\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       
       // French patterns
       /date\s*facture\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /émise\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       
       // Generic patterns
       /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})/g, // Any date pattern
-      /(\w+\s+\d{1,2},?\s+\d{4})/g // Month DD, YYYY format
+      /(\w+\s+\d{1,2},?\s+\d{4})/g, // Month DD, YYYY format
+      /(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})/g // YYYY-MM-DD format
     ];
     
     for (const pattern of datePatterns) {
-      const match = text.match(pattern);
-      if (match && match[1]) {
-        const parsedDate = this.parseDate(match[1]);
-        if (parsedDate) {
-          data.issueDate = parsedDate;
-          console.log('Found date:', data.issueDate);
-          break;
+      // For patterns that might have multiple matches, use matchAll
+      if (pattern.global) {
+        const matches = text.matchAll(pattern);
+        for (const match of matches) {
+          if (match && match[1]) {
+            const parsedDate = this.parseDate(match[1]);
+            if (parsedDate) {
+              data.issueDate = parsedDate;
+              console.log('Found date:', data.issueDate);
+              break;
+            }
+          }
+        }
+      } else {
+        // For non-global patterns, use regular match
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          const parsedDate = this.parseDate(match[1]);
+          if (parsedDate) {
+            data.issueDate = parsedDate;
+            console.log('Found date:', data.issueDate);
+            break;
+          }
         }
       }
     }
@@ -465,27 +637,76 @@ export class InvoiceProcessor {
     ];
     
     for (const pattern of dueDatePatterns) {
-      const match = text.match(pattern);
-      if (match && match[1]) {
-        const parsedDate = this.parseDate(match[1]);
-        if (parsedDate) {
-          data.dueDate = parsedDate;
-          console.log('Found due date:', data.dueDate);
-          break;
+      // For patterns that might have multiple matches, use matchAll
+      if (pattern.global) {
+        const matches = text.matchAll(pattern);
+        for (const match of matches) {
+          if (match && match[1]) {
+            const parsedDate = this.parseDate(match[1]);
+            if (parsedDate) {
+              data.dueDate = parsedDate;
+              console.log('Found due date:', data.dueDate);
+              break;
+            }
+          }
+        }
+      } else {
+        // For non-global patterns, use regular match
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          const parsedDate = this.parseDate(match[1]);
+          if (parsedDate) {
+            data.dueDate = parsedDate;
+            console.log('Found due date:', data.dueDate);
+            break;
+          }
         }
       }
     }
     
-    // Currency detection
-    if (text.includes('€') || text.includes('EUR')) {
-      data.currency = 'EUR';
-    } else if (text.includes('$') || text.includes('USD')) {
-      data.currency = 'USD';
-    } else if (text.includes('£') || text.includes('GBP')) {
-      data.currency = 'GBP';
+    // Enhanced currency detection
+    const currencyPatterns = [
+      { symbol: '€', code: 'EUR', keywords: ['EUR', 'EURO', 'EUROS'] },
+      { symbol: '$', code: 'USD', keywords: ['USD', 'DOLLAR', 'DOLLARS'] },
+      { symbol: '£', code: 'GBP', keywords: ['GBP', 'POUND', 'POUNDS'] },
+      { symbol: '¥', code: 'JPY', keywords: ['JPY', 'YEN'] },
+      { symbol: '₹', code: 'INR', keywords: ['INR', 'RUPEE', 'RUPEE'] }
+    ];
+    
+    for (const currency of currencyPatterns) {
+      if (text.includes(currency.symbol) || currency.keywords.some(keyword => text.toUpperCase().includes(keyword))) {
+        data.currency = currency.code;
+        console.log('Found currency:', currency.code);
+        break;
+      }
     }
     
-    console.log('Extracted data:', data);
+    // If no currency found but we have an amount, try to infer from context
+    if (!data.currency && data.amount) {
+      // Look for currency symbols near the amount
+      const amountStr = data.amount.toString();
+      const amountIndex = text.indexOf(amountStr);
+      if (amountIndex !== -1) {
+        const context = text.substring(Math.max(0, amountIndex - 10), amountIndex + amountStr.length + 10);
+        for (const currency of currencyPatterns) {
+          if (context.includes(currency.symbol)) {
+            data.currency = currency.code;
+            console.log('Inferred currency from context:', currency.code);
+            break;
+          }
+        }
+      }
+    }
+    
+    console.log('=== EXTRACTION SUMMARY ===');
+    console.log('Vendor Name:', data.vendorName || 'NOT FOUND');
+    console.log('Invoice Number:', data.invoiceNumber || 'NOT FOUND');
+    console.log('Amount:', data.amount || 'NOT FOUND');
+    console.log('Currency:', data.currency || 'NOT FOUND');
+    console.log('Issue Date:', data.issueDate || 'NOT FOUND');
+    console.log('Due Date:', data.dueDate || 'NOT FOUND');
+    console.log('========================');
+    
     return data;
   }
 

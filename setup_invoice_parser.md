@@ -1,64 +1,88 @@
-# Setup Google Document AI OCR
+# Setting up Google Document AI Invoice Parser
 
-## Why Document OCR?
+## Overview
+We're switching from Document OCR to the **Invoice Parser** processor, which is specifically designed to understand and extract structured data from invoices.
 
-Google's **Document OCR** extracts clean, high-quality text from any document format and language. Combined with our enhanced multi-language text extraction patterns, this provides superior accuracy for international invoices.
+## Why Invoice Parser?
+- **Pre-trained for invoices**: Understands invoice layouts and field types
+- **Extracts structured data**: Vendor name, amounts, dates, invoice numbers, etc.
+- **Multi-language support**: Works with invoices in different languages
+- **Much more accurate**: Better than OCR + regex patterns
 
-## Setup Steps:
+## Setup Steps
 
 ### 1. Go to Google Cloud Console
 - Visit: https://console.cloud.google.com/
 - Select your project: `accounti-4698b`
 
 ### 2. Navigate to Document AI
-- Go to: **APIs & Services** → **Document AI**
+- Go to **APIs & Services** → **Document AI**
 - Or search for "Document AI" in the search bar
 
-### 3. Create Document OCR Processor
+### 3. Create Invoice Parser Processor
 - Click **"Create Processor"**
-- Select **"Document OCR"** from the list
-- Choose **Location**: `us` (United States)
+- Select **"Invoice Parser"** from the processor types
+- Choose **"Invoice Parser"** (not "Invoice Parser (US)" or other variants)
+- Set **Location** to `us` (United States)
 - Click **"Create"**
 
-### 4. Copy the Processor ID
-- After creation, you'll see a Processor ID like: `1234567890abcdef`
-- Copy this ID
+### 4. Get Processor ID
+- After creation, copy the **Processor ID** (looks like: `12345678901234567890`)
+- This will be used in our configuration
 
-### 5. Update Firebase Functions Config
-Run this command in your terminal:
+### 5. Update Configuration
+Run this command to update the processor ID:
 
 ```bash
-firebase functions:config:set google.document_ai_processor_id="YOUR_PROCESSOR_ID_HERE"
+firebase functions:config:set google.document_ai_processor_id="YOUR_PROCESSOR_ID"
 ```
 
-Replace `YOUR_PROCESSOR_ID_HERE` with the actual Processor ID you copied.
+Replace `YOUR_PROCESSOR_ID` with the actual processor ID you copied.
 
-### 6. Deploy the Functions
+### 6. Deploy Functions
 ```bash
 firebase deploy --only functions
 ```
 
-## What Document OCR + Multi-Language Extraction Provides:
+## How It Works
 
-Our enhanced system extracts these fields from invoices in any language:
-- **Invoice ID/Number** (English, Spanish, Portuguese, Italian, French)
-- **Supplier/Vendor Name** (with company type detection: S.L., S.A., LDA, etc.)
-- **Invoice Date** (multiple date formats and languages)
-- **Due Date** (payment terms in multiple languages)
-- **Total Amount** (with currency detection: €, $, £)
-- **Currency** (automatic detection)
-- **Tax Amount** (VAT, IVA, etc.)
+### Before (OCR + Regex)
+1. Extract text from PDF
+2. Apply regex patterns to find data
+3. Often fails due to different invoice formats
 
-## Benefits:
+### After (Invoice Parser)
+1. Send PDF to Document AI
+2. AI understands the document structure
+3. Returns structured entities (vendor, amount, date, etc.)
+4. Much more reliable extraction
 
-✅ **No training required** - works immediately
-✅ **Multi-language support** - English, Spanish, Portuguese, Italian, French
-✅ **High accuracy** - Document AI OCR + enhanced text extraction
-✅ **Currency detection** - automatically detects €, $, £
-✅ **Company type recognition** - S.L., S.A., LDA, LLC, Inc, etc.
-✅ **Flexible date formats** - handles various date patterns
-✅ **International invoices** - works with any country's invoice format
+## Expected Results
 
-## Testing:
+The Invoice Parser will extract:
+- ✅ **Vendor/Supplier Name**
+- ✅ **Invoice Number**
+- ✅ **Total Amount**
+- ✅ **Currency**
+- ✅ **Issue Date**
+- ✅ **Due Date**
+- ✅ **Tax Amount**
 
-After setup, try scanning your invoices again. The system will now use Document OCR to extract clean text and apply our multi-language patterns for much higher accuracy with international invoices! 
+## Testing
+
+After setup:
+1. Go to https://accounti-4698b.web.app
+2. Sign in
+3. Click "Fetch New Invoices"
+4. Check the console logs - you should see:
+   - "Using Document AI Invoice Parser entities"
+   - "✅ Found vendor name: [Company Name]"
+   - "✅ Found amount: [Amount]"
+   - etc.
+
+## Benefits
+
+- **Higher accuracy**: AI understands invoice semantics
+- **Better handling**: Works with different invoice formats
+- **Structured output**: Clean, reliable data extraction
+- **Multi-language**: Handles invoices in various languages 

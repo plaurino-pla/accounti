@@ -118,25 +118,35 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   };
 
   const handleFetchInvoices = async () => {
+    console.log('=== FETCH INVOICES BUTTON CLICKED ===');
+    console.log('User:', user);
+    console.log('User ID:', user.uid);
+    console.log('Access Token:', user.accessToken ? 'Present' : 'Missing');
     setLoading(true);
     try {
       // Try to refresh token first if we have a refresh token
       let currentAccessToken = user.accessToken;
+      console.log('Current access token:', currentAccessToken ? 'Present' : 'Missing');
+      
       if (user.refreshToken) {
+        console.log('Attempting token refresh...');
         try {
           const refreshResponse = await authAPI.refreshToken(user.uid);
           currentAccessToken = refreshResponse.data.accessToken;
+          console.log('Token refreshed successfully');
           // Update user context with new token
           const updatedUser = { ...user, accessToken: currentAccessToken };
           localStorage.setItem('accounti_user', JSON.stringify(updatedUser));
-          window.location.reload(); // Reload to update the user context
-          return;
+          // Don't reload, just continue with the new token
+          console.log('Continuing with refreshed token...');
         } catch (refreshError) {
-          console.log('Token refresh failed, proceeding with current token');
+          console.log('Token refresh failed:', refreshError);
         }
       }
 
+      console.log('Calling scanInvoices API with token:', currentAccessToken.substring(0, 20) + '...');
       const response = await invoiceAPI.scanInvoices(user.uid, currentAccessToken);
+      console.log('Scan response received:', response.data);
       
       if (response.data.success) {
         await loadInvoices(); // Refresh the invoice list
@@ -154,13 +164,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       }
     } catch (error: any) {
       console.error('Scan invoices error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: error.config
+      });
+      
       if (error.response?.status === 401) {
         alert('Your session has expired. Please sign in again.');
         // Clear user data and redirect to sign in
         localStorage.removeItem('accounti_user');
         window.location.reload();
       } else {
-        alert('Failed to scan for new invoices. Please try again.');
+        alert(`Failed to scan for new invoices. Error: ${error.message}`);
       }
     } finally {
       setLoading(false);
@@ -242,16 +259,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             
             <div className="flex items-center space-x-4">
               <button
-                onClick={handleFetchInvoices}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleFetchInvoices();
+                }}
                 disabled={loading}
+                type="button"
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? 'Scanning...' : 'Fetch New Invoices'}
               </button>
 
               <button
-                onClick={handleManualTrigger}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleManualTrigger();
+                }}
                 disabled={loading}
+                type="button"
                 className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? 'Processing...' : '🔄 Manual Trigger'}
