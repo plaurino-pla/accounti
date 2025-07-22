@@ -34,12 +34,18 @@ export class GPTVisionService {
     try {
       console.log('Converting PDF to image...');
       
-      // Parse PDF to get dimensions
-      const pdfData = await pdfParse(buffer);
-      const pageCount = pdfData.numpages || 1;
-      console.log(`PDF has ${pageCount} pages, converting first page`);
+      // Try to parse PDF first
+      let pdfText = '';
+      try {
+        const pdfData = await pdfParse(buffer);
+        pdfText = pdfData.text || '';
+        console.log(`PDF parsed successfully, ${pdfData.numpages || 1} pages, text length: ${pdfText.length}`);
+      } catch (pdfError) {
+        console.log('PDF parsing failed, creating fallback image');
+        pdfText = '[PDF content could not be parsed]';
+      }
       
-      // Create a canvas for the first page
+      // Create a canvas for the image
       const canvas = createCanvas(800, 1000); // Default size
       const ctx = canvas.getContext('2d');
       
@@ -47,10 +53,10 @@ export class GPTVisionService {
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Add text representation as fallback
+      // Add text representation
       ctx.fillStyle = 'black';
       ctx.font = '12px Arial';
-      const lines = pdfData.text.split('\n').slice(0, 50); // First 50 lines
+      const lines = pdfText.split('\n').slice(0, 50); // First 50 lines
       lines.forEach((line: string, index: number) => {
         ctx.fillText(line.substring(0, 80), 10, 20 + (index * 15));
       });
@@ -62,7 +68,16 @@ export class GPTVisionService {
       return imageBuffer;
     } catch (error) {
       console.error('Error converting PDF to image:', error);
-      throw new Error('Failed to convert PDF to image');
+      // Create a simple fallback image
+      const canvas = createCanvas(400, 200);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, 400, 200);
+      ctx.fillStyle = 'black';
+      ctx.font = '16px Arial';
+      ctx.fillText('PDF Content', 10, 30);
+      ctx.fillText('(Image conversion failed)', 10, 50);
+      return canvas.toBuffer('image/png');
     }
   }
 
@@ -77,7 +92,8 @@ export class GPTVisionService {
       return text;
     } catch (error) {
       console.error('PDF text extraction failed:', error);
-      return '[PDF text extraction failed]';
+      // Return a more descriptive fallback
+      return `[PDF text extraction failed: ${(error as Error).message}. Buffer size: ${buffer.length} bytes]`;
     }
   }
 
