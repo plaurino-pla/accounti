@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { User, Invoice, InvoiceStats, ProcessingLog, invoiceAPI, accountAPI, sheetsAPI, driveAPI, authAPI, gmailAPI } from '../services/api';
 import InvoiceTable from './InvoiceTable';
 import AccountManager from './AccountManager';
+import ActivityFeed from './ActivityFeed';
+import { useActivityFeed } from '../hooks/useActivityFeed';
 
 interface DashboardProps {
   user: User;
@@ -26,6 +28,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
   const [showAccountManager, setShowAccountManager] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Activity feed hook
+  const {
+    activities,
+    isVisible: isActivityFeedVisible,
+    addProcessingActivity,
+    updateProcessingProgress,
+    completeProcessingActivity,
+    addSuccessActivity,
+    addErrorActivity,
+    addInfoActivity,
+    addWarningActivity,
+    clearActivities,
+    showActivityFeed,
+    hideActivityFeed,
+    toggleActivityFeed,
+  } = useActivityFeed();
 
   useEffect(() => {
     loadInitialData();
@@ -118,6 +137,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
     }
 
     setUploadLoading(true);
+    
+    // Add processing activity
+    const processingActivityId = addProcessingActivity(
+      'Manual Invoice Upload',
+      `Uploading ${selectedFile.name}...`,
+      { filename: selectedFile.name, size: selectedFile.size }
+    );
+    
     try {
       let currentAccessToken = user.accessToken;
       
@@ -132,12 +159,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
         }
       }
 
+      // Update progress to 25%
+      updateProcessingProgress(processingActivityId, 25);
+
       // Convert file to base64
       const reader = new FileReader();
       reader.onload = async () => {
         try {
           const base64Data = reader.result as string;
           const base64Content = base64Data.split(',')[1]; // Remove data:application/pdf;base64, prefix
+          
+          // Update progress to 50%
+          updateProcessingProgress(processingActivityId, 50);
           
           const uploadData = {
             userId: user.uid,
@@ -150,15 +183,32 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
           const response = await invoiceAPI.uploadManualInvoice(uploadData);
           
           if (response.data.success) {
+            // Update progress to 75%
+            updateProcessingProgress(processingActivityId, 75);
+            
             await loadInvoices();
             await loadStats();
             await loadSpreadsheetUrl();
             
             const message = `Invoice uploaded successfully! Found ${response.data.invoicesFound} invoice from uploaded file.`;
+            
+            // Complete with success
+            completeProcessingActivity(
+              processingActivityId,
+              'success',
+              message,
+              undefined,
+              { 
+                invoicesFound: response.data.invoicesFound,
+                filename: selectedFile.name
+              }
+            );
+            
             if (response.data.errors && response.data.errors.length > 0) {
-              alert(`${message}\n\nSome errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`);
-            } else {
-              alert(message);
+              addWarningActivity(
+                'Upload Warnings',
+                `Some errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`
+              );
             }
             
             // Reset file selection
@@ -172,12 +222,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
         } catch (error: any) {
           console.error('Manual upload error:', error);
           
+          // Complete with error
+          completeProcessingActivity(
+            processingActivityId,
+            'error',
+            `Failed to upload invoice: ${error.message}`,
+            undefined,
+            { filename: selectedFile.name, error: error.message }
+          );
+          
           if (error.response?.status === 401) {
-            alert('Your session has expired. Please sign in again.');
+            addErrorActivity(
+              'Authentication Error',
+              'Your session has expired. Please sign in again.'
+            );
             localStorage.removeItem('accounti_user');
             window.location.reload();
           } else {
-            alert(`Failed to upload invoice. Error: ${error.message}`);
+            addErrorActivity(
+              'Upload Failed',
+              `Failed to upload invoice: ${error.message}`
+            );
           }
         } finally {
           setUploadLoading(false);
@@ -185,7 +250,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
       };
       
       reader.onerror = () => {
-        alert('Error reading file. Please try again.');
+        completeProcessingActivity(
+          processingActivityId,
+          'error',
+          'Error reading file. Please try again.',
+          undefined,
+          { filename: selectedFile.name }
+        );
         setUploadLoading(false);
       };
       
@@ -193,13 +264,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
       
     } catch (error: any) {
       console.error('Manual upload error:', error);
-      alert(`Failed to upload invoice. Error: ${error.message}`);
+      
+      // Complete with error
+      completeProcessingActivity(
+        processingActivityId,
+        'error',
+        `Failed to upload invoice: ${error.message}`,
+        undefined,
+        { filename: selectedFile.name, error: error.message }
+      );
+      
       setUploadLoading(false);
     }
   };
 
   const handleFetchInvoices = async () => {
     setLoading(true);
+    
+    // Add processing activity
+    const processingActivityId = addProcessingActivity(
+      'Scanning for Invoices',
+      'Starting background scan of your Gmail for invoice attachments...',
+      { userId: user.uid }
+    );
+    
     try {
       let currentAccessToken = user.accessToken;
       
@@ -214,6 +302,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
         }
       }
 
+      // Update progress to 10%
+      updateProcessingProgress(processingActivityId, 10);
+
       const response = await invoiceAPI.scanInvoices(user.uid, currentAccessToken);
       
       if (response.data.success) {
@@ -225,29 +316,71 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
         
         setProcessingStatus(message);
         
+        // Update progress to 30%
+        updateProcessingProgress(processingActivityId, 30);
+        
         // Set up Gmail webhook for real-time notifications (optional)
         try {
           await gmailAPI.setupWebhook(user.uid, currentAccessToken);
           console.log('Gmail webhook set up successfully');
+          addInfoActivity(
+            'Gmail Webhook Setup',
+            'Real-time notifications configured successfully'
+          );
         } catch (webhookError) {
           console.log('Gmail webhook setup failed (optional feature):', webhookError);
-          // Don't show error to user, webhook is optional
+          addInfoActivity(
+            'Gmail Webhook Setup',
+            'Real-time notifications setup failed (optional feature)'
+          );
         }
         
+        // Update progress to 50%
+        updateProcessingProgress(processingActivityId, 50);
+        
         // Start polling for updates
-        startPollingForUpdates();
+        startPollingForUpdates(processingActivityId);
+        
+        // Complete the processing activity
+        completeProcessingActivity(
+          processingActivityId,
+          'success',
+          'Background scan initiated successfully. Processing will continue in the background.',
+          undefined,
+          { 
+            isFirstTime,
+            emailsScanned: response.data.emailsScanned,
+            attachmentsProcessed: response.data.attachmentsProcessed,
+            invoicesFound: response.data.invoicesFound
+          }
+        );
       } else {
         throw new Error('Scan failed');
       }
     } catch (error: any) {
       console.error('Scan invoices error:', error);
       
+      // Complete with error
+      completeProcessingActivity(
+        processingActivityId,
+        'error',
+        `Failed to scan for new invoices: ${error.message}`,
+        undefined,
+        { error: error.message }
+      );
+      
       if (error.response?.status === 401) {
-        alert('Your session has expired. Please sign in again.');
+        addErrorActivity(
+          'Authentication Error',
+          'Your session has expired. Please sign in again.'
+        );
         localStorage.removeItem('accounti_user');
         window.location.reload();
       } else {
-        alert(`Failed to scan for new invoices. Error: ${error.message}`);
+        addErrorActivity(
+          'Scan Failed',
+          `Failed to scan for new invoices: ${error.message}`
+        );
       }
     } finally {
       setLoading(false);
@@ -262,7 +395,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
   };
 
   // Poll for updates during background processing
-  const startPollingForUpdates = () => {
+  const startPollingForUpdates = (processingActivityId?: string) => {
     const pollInterval = setInterval(async () => {
       try {
         // Check if processing is complete by looking for new invoices
@@ -276,11 +409,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
           await loadStats();
           clearInterval(pollInterval);
           
+          // Update activity feed
+          if (processingActivityId) {
+            completeProcessingActivity(
+              processingActivityId,
+              'success',
+              `Background processing completed! Found ${currentInvoiceCount} invoice${currentInvoiceCount > 1 ? 's' : ''}.`,
+              undefined,
+              { invoicesFound: currentInvoiceCount }
+            );
+          }
+          
           // Show success message
-          alert(`Background processing completed! Found ${currentInvoiceCount} invoice${currentInvoiceCount > 1 ? 's' : ''}.`);
+          addSuccessActivity(
+            'Processing Complete',
+            `Background processing completed! Found ${currentInvoiceCount} invoice${currentInvoiceCount > 1 ? 's' : ''}.`
+          );
         }
       } catch (error) {
         console.error('Error polling for updates:', error);
+        if (processingActivityId) {
+          addErrorActivity(
+            'Polling Error',
+            'Error checking for updates during background processing'
+          );
+        }
       }
     }, 10000); // Poll every 10 seconds
 
@@ -288,6 +441,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
     setTimeout(() => {
       clearInterval(pollInterval);
       setProcessingStatus('Background processing may still be running. Check back in a few minutes.');
+      if (processingActivityId) {
+        addWarningActivity(
+          'Processing Timeout',
+          'Background processing may still be running. Check back in a few minutes.'
+        );
+      }
     }, 10 * 60 * 1000);
   };
 
@@ -397,27 +556,45 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
               </h1>
             </div>
             
-            <div className="flex items-center space-x-4">
-              {/* Main Action Button */}
-              <button
-                onClick={handleFetchInvoices}
-                disabled={loading}
-                className="relative group bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-xl font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-              >
-                {loading ? (
-                  <div className="flex items-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    <span>Processing...</span>
-                  </div>
-                ) : (
+                          <div className="flex items-center space-x-4">
+                {/* Activity Feed Button */}
+                <button
+                  onClick={toggleActivityFeed}
+                  className="relative group bg-white/60 backdrop-blur-sm text-gray-700 px-4 py-2.5 rounded-xl font-medium hover:bg-white/80 transition-all duration-200 shadow-sm hover:shadow-md"
+                >
                   <div className="flex items-center space-x-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    <span>Fetch New Invoices</span>
+                    <span>Activity</span>
+                    {activities.length > 0 && (
+                      <span className="bg-blue-600 text-white text-xs rounded-full px-2 py-1 min-w-[20px] flex items-center justify-center">
+                        {activities.length}
+                      </span>
+                    )}
                   </div>
-                )}
-              </button>
+                </button>
+
+                {/* Main Action Button */}
+                <button
+                  onClick={handleFetchInvoices}
+                  disabled={loading}
+                  className="relative group bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-xl font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                >
+                  {loading ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <span>Processing...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span>Fetch New Invoices</span>
+                    </div>
+                  )}
+                </button>
 
               {/* User Menu */}
               <div className="flex items-center space-x-3">
@@ -642,6 +819,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
           </div>
         )}
       </main>
+      
+      {/* Activity Feed */}
+      <ActivityFeed
+        activities={activities}
+        isVisible={isActivityFeedVisible}
+        onClose={hideActivityFeed}
+        onClearAll={clearActivities}
+      />
     </div>
   );
 };
