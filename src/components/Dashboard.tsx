@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User, Invoice, InvoiceStats, ProcessingLog, invoiceAPI, accountAPI, sheetsAPI, driveAPI, authAPI } from '../services/api';
 import InvoiceTable from './InvoiceTable';
+import AccountManager from './AccountManager';
 
 interface DashboardProps {
   user: User;
@@ -22,6 +23,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showAccountManager, setShowAccountManager] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -244,6 +246,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
   };
 
   // Show loading state while initial data is being fetched
+  if (showAccountManager) {
+    return <AccountManager onBack={() => setShowAccountManager(false)} />;
+  }
+
   if (initialLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -373,6 +379,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
                   <img src={user.picture} alt={user.name} className="w-6 h-6 rounded-full ring-2 ring-white/50" />
                   <span className="text-sm font-medium text-gray-700">{user.name}</span>
                 </div>
+                
+                <button
+                  onClick={() => setShowAccountManager(true)}
+                  className="text-gray-500 hover:text-gray-700 transition-colors p-2 rounded-lg hover:bg-white/60"
+                  title="My Account"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </button>
                 
                 {onSwitchToAdmin && (
                   <button
