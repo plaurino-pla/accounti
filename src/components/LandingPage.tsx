@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 const LandingPage: React.FC = () => {
   const { signIn } = useAuth();
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const features = [
     {
@@ -69,6 +70,101 @@ const LandingPage: React.FC = () => {
     "Access from anywhere, anytime",
     "Free to start, no credit card required"
   ];
+
+  const pricingPlans = [
+    {
+      name: "Free",
+      price: "$0",
+      period: "forever",
+      description: "Perfect for individuals and small businesses",
+      features: [
+        "Up to 50 invoices per month",
+        "Basic AI processing",
+        "Email scanning",
+        "Google Drive storage",
+        "Google Sheets export",
+        "Manual upload",
+        "Basic analytics"
+      ],
+      cta: "Start Free",
+      popular: false
+    },
+    {
+      name: "Pro",
+      price: "$19",
+      period: "per month",
+      description: "For growing businesses and professionals",
+      features: [
+        "Unlimited invoices",
+        "Advanced AI processing",
+        "Priority email scanning",
+        "Enhanced analytics",
+        "Duplicate detection",
+        "Multi-language support",
+        "Priority support",
+        "Custom categories"
+      ],
+      cta: "Start Pro Trial",
+      popular: true
+    },
+    {
+      name: "Enterprise",
+      price: "Custom",
+      period: "per month",
+      description: "For large organizations with custom needs",
+      features: [
+        "Everything in Pro",
+        "Custom integrations",
+        "Dedicated support",
+        "Advanced reporting",
+        "Team collaboration",
+        "API access",
+        "Custom branding",
+        "SLA guarantee"
+      ],
+      cta: "Contact Sales",
+      popular: false
+    }
+  ];
+
+  const faqs = [
+    {
+      question: "How does the AI invoice detection work?",
+      answer: "Our AI analyzes email attachments using advanced machine learning to identify invoices. It looks for keywords like 'invoice', 'factura', 'fattura', and other language equivalents, along with typical invoice patterns and structures."
+    },
+    {
+      question: "What languages does Accounti support?",
+      answer: "Accounti supports multiple languages including English, Spanish, Portuguese, Italian, and more. Our AI can detect and extract data from invoices in various languages automatically."
+    },
+    {
+      question: "How secure is my data?",
+      answer: "Your data is encrypted both in transit and at rest. We use industry-standard security practices and never share your information with third parties. All processing is done securely through Google's infrastructure."
+    },
+    {
+      question: "Can I upload invoices manually?",
+      answer: "Yes! You can upload PDF invoices directly through our dashboard. The system will process them the same way as email attachments, extracting data and organizing them automatically."
+    },
+    {
+      question: "How often does the system scan for new invoices?",
+      answer: "The system automatically scans your emails every 6 hours for new invoices. You can also manually trigger a scan anytime using the 'Fetch New Invoices' button."
+    },
+    {
+      question: "What happens if the AI misidentifies a document?",
+      answer: "Our AI is trained to be very accurate, but if it processes a non-invoice document, it will simply skip it and not extract any data. The system only processes documents it's confident are invoices."
+    },
+    {
+      question: "Can I export my data?",
+      answer: "Yes! All your invoice data is automatically exported to a Google Sheet that you can access anytime. You can also download individual invoices from Google Drive."
+    },
+    {
+      question: "Is there a limit on file size?",
+      answer: "Yes, the maximum file size for invoice uploads is 10MB. This covers most standard invoice PDFs while ensuring fast processing times."
+    }
+  ];
+
+  const toggleFaq = (index: number) => {
+    setOpenFaq(openFaq === index ? null : index);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
@@ -165,8 +261,75 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Benefits Section */}
+      {/* Pricing Section */}
       <section className="px-6 py-20">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
+              Simple, transparent
+              <span className="block bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                pricing
+              </span>
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Choose the plan that fits your needs. Start free and upgrade as you grow.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {pricingPlans.map((plan, index) => (
+              <div
+                key={index}
+                className={`relative bg-white rounded-3xl p-8 shadow-lg hover:shadow-xl transition-all duration-300 ${
+                  plan.popular ? 'ring-2 ring-blue-500 scale-105' : ''
+                }`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                    <span className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-full text-sm font-semibold">
+                      Most Popular
+                    </span>
+                  </div>
+                )}
+                
+                <div className="text-center mb-8">
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                  <div className="mb-4">
+                    <span className="text-4xl font-bold text-gray-900">{plan.price}</span>
+                    <span className="text-gray-600 ml-2">{plan.period}</span>
+                  </div>
+                  <p className="text-gray-600">{plan.description}</p>
+                </div>
+
+                <ul className="space-y-4 mb-8">
+                  {plan.features.map((feature, featureIndex) => (
+                    <li key={featureIndex} className="flex items-center space-x-3">
+                      <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-gray-700">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <button
+                  onClick={signIn}
+                  className={`w-full py-3 px-6 rounded-xl font-semibold transition-all duration-200 ${
+                    plan.popular
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700'
+                      : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                  }`}
+                >
+                  {plan.cta}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Benefits Section */}
+      <section className="px-6 py-20 bg-white/50 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
@@ -206,6 +369,55 @@ const LandingPage: React.FC = () => {
                 <span className="text-yellow-900 font-bold text-sm">✨</span>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="px-6 py-20">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
+              Frequently Asked
+              <span className="block bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Questions
+              </span>
+            </h2>
+            <p className="text-xl text-gray-600">
+              Everything you need to know about Accounti. Can't find the answer you're looking for? 
+              Please contact our support team.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {faqs.map((faq, index) => (
+              <div
+                key={index}
+                className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden"
+              >
+                <button
+                  onClick={() => toggleFaq(index)}
+                  className="w-full px-8 py-6 text-left flex items-center justify-between hover:bg-gray-50 transition-colors duration-200"
+                >
+                  <h3 className="text-lg font-semibold text-gray-900 pr-4">{faq.question}</h3>
+                  <svg
+                    className={`w-6 h-6 text-gray-500 transform transition-transform duration-200 ${
+                      openFaq === index ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {openFaq === index && (
+                  <div className="px-8 pb-6">
+                    <p className="text-gray-600 leading-relaxed">{faq.answer}</p>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </section>
