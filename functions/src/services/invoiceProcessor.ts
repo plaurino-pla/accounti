@@ -49,8 +49,8 @@ export class InvoiceProcessor {
       const gptService = new GPTVisionService();
       const gptData = await gptService.processInvoiceWithChatGPT(buffer, filename);
       
-      // If ChatGPT successfully extracted data, it's likely an invoice
-      const isInvoice = !!(gptData.vendorName || gptData.invoiceNumber || gptData.amount);
+      // Use ChatGPT's invoice detection
+      const isInvoice = gptData.isInvoice;
       const confidence = gptData.confidence || (isInvoice ? 0.95 : 0.1);
       
       console.log('=== CHATGPT DETECTION RESULT ===');

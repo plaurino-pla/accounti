@@ -5,6 +5,7 @@ import * as functions from 'firebase-functions';
 const db = admin.firestore();
 
 export interface GPTExtractedData {
+  isInvoice: boolean;
   vendorName?: string | null;
   invoiceNumber?: string | null;
   issueDate?: string | null;
@@ -38,6 +39,7 @@ export class GPTVisionService {
     if (buffer.length > maxSizeBytes) {
       console.log(`File too large (${buffer.length} bytes), skipping ChatGPT processing`);
       return {
+        isInvoice: false,
         vendorName: null,
         invoiceNumber: null,
         issueDate: null,
@@ -66,6 +68,7 @@ export class GPTVisionService {
       if (!extractedText || extractedText.trim().length === 0) {
         console.log('No text extracted from PDF');
         return {
+          isInvoice: false,
           vendorName: null,
           invoiceNumber: null,
           issueDate: null,
@@ -85,27 +88,39 @@ export class GPTVisionService {
         messages: [
           {
             role: 'system',
-            content: `You are an expert invoice data extraction system. Analyze the provided invoice text to extract structured data.
+            content: `You are an expert invoice detection and data extraction system. Your job is to FIRST determine if the document is an invoice, and ONLY if it is, extract the data.
 
 CRITICAL INSTRUCTIONS:
-1. You will receive extracted text from an invoice PDF
-2. Extract the most accurate data possible from the text
-3. Return ONLY valid JSON with these exact fields:
-   - vendorName: string (company/supplier name)
-   - invoiceNumber: string (invoice ID/number)
-   - issueDate: string (YYYY-MM-DD format)
-   - dueDate: string (YYYY-MM-DD format)
-   - amount: number (total amount, no currency symbol)
-   - currency: string (3-letter currency code like USD, EUR, etc.)
-   - taxAmount: number (tax/VAT amount if present)
-   - confidence: number (0.0 to 1.0, how confident you are)
+1. FIRST: Determine if this is actually an invoice document
+2. Look for clear invoice indicators:
+   - Keywords: "INVOICE", "FACTURA", "FATTURA", "FATURA", "RECEIPT", "BILL"
+   - Invoice numbers: INV-, #, 2024-, etc.
+   - Total amounts with currency
+   - Vendor/supplier information
+   - Due dates or payment terms
 
-4. If a field is not found, use null
+3. IF THIS IS NOT AN INVOICE:
+   - Return: {"isInvoice": false, "confidence": 0.0}
+   - Do NOT extract any other data
+   - Do NOT process non-invoice documents
+
+4. IF THIS IS AN INVOICE:
+   - Return valid JSON with these exact fields:
+     - isInvoice: true
+     - vendorName: string (company/supplier name)
+     - invoiceNumber: string (invoice ID/number)
+     - issueDate: string (YYYY-MM-DD format)
+     - dueDate: string (YYYY-MM-DD format)
+     - amount: number (total amount, no currency symbol)
+     - currency: string (3-letter currency code like USD, EUR, etc.)
+     - taxAmount: number (tax/VAT amount if present)
+     - confidence: number (0.0 to 1.0, how confident you are)
+
 5. For amounts, extract only the number (no currency symbols)
 6. For dates, use YYYY-MM-DD format
 7. Handle multi-language invoices (Spanish, Portuguese, Italian, etc.)
-8. ALWAYS return valid JSON, even if you can't extract much data
-9. Look for keywords like "invoice", "factura", "fattura", "fatura" to confirm it's an invoice`
+8. If you can't extract much data but it's clearly an invoice, use low confidence (0.3-0.5)
+9. ALWAYS return valid JSON`
           },
           {
             role: 'user',
@@ -136,6 +151,7 @@ CRITICAL INSTRUCTIONS:
           // If no JSON found, create a fallback response
           console.log('No JSON found in response, creating fallback');
           extractedData = {
+            isInvoice: false,
             vendorName: null,
             invoiceNumber: null,
             issueDate: null,
@@ -151,6 +167,7 @@ CRITICAL INSTRUCTIONS:
         console.log('Raw response was:', content);
         // Create fallback data
         extractedData = {
+          isInvoice: false,
           vendorName: null,
           invoiceNumber: null,
           issueDate: null,
@@ -164,6 +181,7 @@ CRITICAL INSTRUCTIONS:
 
       // Validate and clean the data
       const cleanData: GPTExtractedData = {
+        isInvoice: extractedData.isInvoice || false,
         vendorName: extractedData.vendorName || null,
         invoiceNumber: extractedData.invoiceNumber || null,
         issueDate: extractedData.issueDate || null,
@@ -186,6 +204,7 @@ CRITICAL INSTRUCTIONS:
       // Return fallback data instead of throwing
       console.log('Returning fallback data due to error');
       return {
+        isInvoice: false,
         vendorName: null,
         invoiceNumber: null,
         issueDate: null,
