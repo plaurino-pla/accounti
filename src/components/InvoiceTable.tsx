@@ -66,6 +66,9 @@ const InvoiceTable: React.FC<InvoiceTableProps> = ({ invoices }) => {
         <thead className="bg-gray-50/50 backdrop-blur-sm">
           <tr>
             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              #
+            </th>
+            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Invoice Details
             </th>
             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -86,8 +89,13 @@ const InvoiceTable: React.FC<InvoiceTableProps> = ({ invoices }) => {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {invoices.map((invoice) => (
+          {invoices.map((invoice, index) => (
             <tr key={invoice.id} className="hover:bg-white/50 transition-colors duration-150">
+              <td className="px-6 py-4 whitespace-nowrap">
+                <div className="text-sm font-bold text-gray-900">
+                  #{index + 1}
+                </div>
+              </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex items-center">
                   <div className="flex-shrink-0 h-10 w-10">
