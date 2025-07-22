@@ -232,6 +232,9 @@ export const adminAPI = {
     }> }>('/admin/logs', {
       params: { limit }
     }),
+  
+  getUserForImpersonation: (userId: string) =>
+    api.get<{ user: User }>(`/admin/user/${userId}`),
 };
 
 // Health check

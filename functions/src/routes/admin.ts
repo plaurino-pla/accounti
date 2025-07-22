@@ -138,4 +138,37 @@ router.get('/logs', async (req, res) => {
   }
 });
 
+// Get user for impersonation (includes access token)
+router.get('/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const userDoc = await db.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const userData = userDoc.data();
+    
+    res.json({ 
+      user: {
+        uid: userDoc.id,
+        email: userData?.email,
+        name: userData?.name,
+        picture: userData?.picture,
+        accessToken: userData?.accessToken,
+        refreshToken: userData?.refreshToken,
+        createdAt: userData?.createdAt?.toDate(),
+        updatedAt: userData?.updatedAt?.toDate()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting user for impersonation:', error);
+    res.status(500).json({ error: 'Failed to get user' });
+  }
+});
+
 export default router; 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { adminAPI } from '../services/api';
+import { adminAPI, User } from '../services/api';
 
 interface AdminStats {
   totalUsers: number;
@@ -10,7 +10,7 @@ interface AdminStats {
   averageAmountPerUser: number;
 }
 
-interface User {
+interface AdminUser {
   uid: string;
   email: string;
   name: string;
@@ -36,14 +36,26 @@ interface ProcessingLog {
 
 interface AdminDashboardProps {
   onSwitchToUser: () => void;
+  onImpersonateUser: (user: User) => void;
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSwitchToUser }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSwitchToUser, onImpersonateUser }) => {
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'logs'>('overview');
+
+  // Get user for impersonation
+  const handleImpersonateUser = async (adminUser: AdminUser) => {
+    try {
+      const response = await adminAPI.getUserForImpersonation(adminUser.uid);
+      onImpersonateUser(response.data.user);
+    } catch (error) {
+      console.error('Error fetching user for impersonation:', error);
+      alert('Failed to impersonate user. Please try again.');
+    }
+  };
 
   useEffect(() => {
     loadAdminData();
@@ -271,6 +283,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSwitchToUser }) => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Joined
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -302,6 +317,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSwitchToUser }) => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(user.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button
+                          onClick={() => handleImpersonateUser(user)}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 transition-colors"
+                        >
+                          Impersonate
+                        </button>
                       </td>
                     </tr>
                   ))}
