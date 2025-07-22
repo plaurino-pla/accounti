@@ -16,7 +16,7 @@ const AppContent: React.FC = () => {
   }
 
   // Check if user is admin (you can modify this logic)
-  const isAdmin = user?.email === 'pablolaurino@gmail.com' || user?.email === 'admin@accounti.com';
+  const isAdmin = user?.email === 'pablolaurino@gmail.com' || user?.email === 'admin@accounti.com' || user?.email === 'plaurino@publica.la';
 
   return (
     <div className="min-h-screen bg-gray-50">
