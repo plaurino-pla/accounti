@@ -46,6 +46,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
     toggleActivityFeed,
   } = useActivityFeed();
 
+  // Set activity feed to be open by default
+  useEffect(() => {
+    if (activities.length === 0) {
+      showActivityFeed();
+    }
+  }, [showActivityFeed]);
+
   useEffect(() => {
     loadInitialData();
   }, [user.uid]);
@@ -496,7 +503,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
         </header>
 
         {/* Loading Content */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="w-full px-4 sm:px-6 lg:px-8 py-8">
           {/* Welcome Section */}
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -543,7 +550,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Modern Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-white/20 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
@@ -637,7 +644,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`w-full px-4 sm:px-6 lg:px-8 py-8 transition-all duration-300 ${isActivityFeedVisible ? 'pr-96' : ''}`}>
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
