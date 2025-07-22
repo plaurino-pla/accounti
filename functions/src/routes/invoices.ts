@@ -221,8 +221,10 @@ router.post('/scan', async (req, res) => {
     if (isFirstTime) {
       console.log('Starting background processing for first-time user');
       
-      // Start background processing
-      processFirstTimeScanInBackground(userId, accessToken, timeRange);
+      // Start background processing (fire and forget)
+      processFirstTimeScanInBackground(userId, accessToken, timeRange).catch(error => {
+        console.error('Background processing error:', error);
+      });
       
       // Update user to mark as not first-time anymore
       await db.collection('users').doc(userId).update({
@@ -244,8 +246,10 @@ router.post('/scan', async (req, res) => {
     // Regular processing - also run in background to avoid timeouts
     console.log('Starting background processing for regular user');
     
-    // Start background processing
-    processRegularScanInBackground(userId, accessToken, timeRange);
+    // Start background processing (fire and forget)
+    processRegularScanInBackground(userId, accessToken, timeRange).catch(error => {
+      console.error('Background processing error:', error);
+    });
     
     // Update user to mark as processing
     await db.collection('users').doc(userId).update({
@@ -395,6 +399,11 @@ async function processFirstTimeScanInBackground(userId: string, accessToken: str
     // Fetch emails with attachments
     const emails = await gmailService.getEmailsWithAttachments(timeRange);
     console.log(`Found ${emails.length} emails with attachments for first-time processing`);
+    
+    // Debug: Log email details
+    emails.forEach((email, index) => {
+      console.log(`Email ${index + 1}: ID=${email.id}, Attachments=${email.attachments?.length || 0}`);
+    });
 
     let totalInvoicesFound = 0;
     let totalEmailsScanned = 0;
@@ -411,6 +420,7 @@ async function processFirstTimeScanInBackground(userId: string, accessToken: str
       for (const email of chunk) {
         try {
           totalEmailsScanned++;
+          console.log(`Processing email ${totalEmailsScanned}/${emails.length}: ID=${email.id}, Attachments=${email.attachments?.length || 0}`);
           
           // Process each attachment
           for (const attachment of email.attachments || []) {
