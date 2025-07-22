@@ -9,6 +9,8 @@ const db = admin.firestore();
 
 // Scan for new invoices
 router.post('/scan', async (req, res) => {
+  console.log('=== SCAN ROUTE CALLED ===');
+  console.log('Request body:', req.body);
   try {
     const { userId, accessToken } = req.body;
     
@@ -80,6 +82,8 @@ router.post('/scan', async (req, res) => {
               );
 
               if (isInvoice) {
+                console.log('=== CALLING PROCESS AND SAVE INVOICE ===');
+                console.log('Invoice detected, processing:', attachment.filename);
                 // Process and save invoice with Drive and Sheets integration
                 await invoiceProcessor.processAndSaveInvoice(
                   userId,

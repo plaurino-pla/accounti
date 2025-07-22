@@ -268,7 +268,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 type="button"
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? 'Scanning...' : 'Fetch New Invoices'}
+                {loading ? '🤖 ChatGPT Processing...' : '🤖 ChatGPT Invoice Scan'}
               </button>
 
               <button
