@@ -17,13 +17,49 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     vendorBreakdown: {}
   });
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    loadInvoices();
-    loadStats();
-    loadSpreadsheetUrl();
+    loadInitialData();
   }, [user.uid]);
+
+  const loadInitialData = async () => {
+    setInitialLoading(true);
+    try {
+      // Load all data in parallel for better performance
+      const [invoicesResponse, statsResponse, spreadsheetResponse] = await Promise.allSettled([
+        invoiceAPI.getUserInvoices(user.uid),
+        invoiceAPI.getInvoiceStats(user.uid),
+        sheetsAPI.getSpreadsheetUrl(user.uid, user.accessToken)
+      ]);
+
+      // Handle invoices
+      if (invoicesResponse.status === 'fulfilled') {
+        setInvoices(invoicesResponse.value.data.invoices || []);
+      } else {
+        console.error('Failed to load invoices:', invoicesResponse.reason);
+      }
+
+      // Handle stats
+      if (statsResponse.status === 'fulfilled') {
+        setStats(statsResponse.value.data);
+      } else {
+        console.error('Failed to load stats:', statsResponse.reason);
+      }
+
+      // Handle spreadsheet URL
+      if (spreadsheetResponse.status === 'fulfilled') {
+        setSpreadsheetUrl(spreadsheetResponse.value.data.url);
+      } else {
+        console.error('Failed to load spreadsheet URL:', spreadsheetResponse.reason);
+      }
+    } catch (error) {
+      console.error('Error loading initial data:', error);
+    } finally {
+      setInitialLoading(false);
+    }
+  };
 
   const loadInvoices = async () => {
     try {
@@ -105,6 +141,91 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       currency: 'USD'
     }).format(amount);
   };
+
+  // Show loading state while initial data is being fetched
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        {/* Modern Header */}
+        <header className="bg-white/80 backdrop-blur-md border-b border-white/20 sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                  Accounti
+                </h1>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                {/* User Menu */}
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2 bg-white/60 backdrop-blur-sm rounded-lg px-3 py-1.5">
+                    <img src={user.picture} alt={user.name} className="w-6 h-6 rounded-full ring-2 ring-white/50" />
+                    <span className="text-sm font-medium text-gray-700">{user.name}</span>
+                  </div>
+                  
+                  <button
+                    onClick={signOut}
+                    className="text-gray-500 hover:text-gray-700 transition-colors p-2 rounded-lg hover:bg-white/60"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Loading Content */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Welcome Section */}
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Welcome back, {user.name.split(' ')[0]}! 👋
+            </h2>
+            <p className="text-gray-600">
+              Loading your invoice data...
+            </p>
+          </div>
+
+          {/* Loading Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-white/50 animate-pulse">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-200 rounded w-24"></div>
+                    <div className="h-8 bg-gray-200 rounded w-20"></div>
+                  </div>
+                  <div className="w-12 h-12 bg-gray-200 rounded-xl"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Loading Table */}
+          <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-sm border border-white/50 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
+            </div>
+            <div className="p-8">
+              <div className="flex items-center justify-center space-x-2">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent"></div>
+                <span className="text-gray-600">Loading your invoices...</span>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
