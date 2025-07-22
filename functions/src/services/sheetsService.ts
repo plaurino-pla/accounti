@@ -135,7 +135,7 @@ export class SheetsService {
       await this.sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `A${nextRow}:H${nextRow}`,
-        valueInputOption: 'RAW',
+        valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [[
             invoice.invoiceNumber,
@@ -198,7 +198,7 @@ export class SheetsService {
         await this.sheets.spreadsheets.values.update({
           spreadsheetId,
           range: `A2:H${rows.length + 1}`,
-          valueInputOption: 'RAW',
+          valueInputOption: 'USER_ENTERED',
           requestBody: {
             values: rows
           }
