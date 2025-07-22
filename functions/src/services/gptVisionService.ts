@@ -27,7 +27,7 @@ export class GPTVisionService {
     console.log('=== GPT SERVICE INITIALIZED ===');
   }
 
-  // Process invoice with ChatGPT using base64 PDF data
+  // Process invoice with ChatGPT using text extraction
   async processInvoiceWithChatGPT(buffer: Buffer, filename: string): Promise<GPTExtractedData> {
     console.log('=== CHATGPT INVOICE PROCESSING START ===');
     console.log('Filename:', filename);
@@ -50,23 +50,46 @@ export class GPTVisionService {
     }
 
     try {
-      // Convert PDF buffer to base64
-      const pdfBase64 = buffer.toString('base64');
-      console.log('PDF converted to base64, length:', pdfBase64.length);
+      // Extract text from PDF using pdf-parse
+      let extractedText = '';
+      try {
+        const pdfParse = require('pdf-parse');
+        const pdfData = await pdfParse(buffer);
+        extractedText = pdfData.text || '';
+        console.log('PDF text extracted, length:', extractedText.length);
+        console.log('First 500 characters:', extractedText.substring(0, 500));
+      } catch (pdfError) {
+        console.error('PDF text extraction failed:', pdfError);
+        extractedText = '[PDF text extraction failed]';
+      }
+
+      if (!extractedText || extractedText.trim().length === 0) {
+        console.log('No text extracted from PDF');
+        return {
+          vendorName: null,
+          invoiceNumber: null,
+          issueDate: null,
+          dueDate: null,
+          amount: null,
+          currency: null,
+          taxAmount: null,
+          confidence: 0.1
+        };
+      }
       
-      console.log('Sending to ChatGPT with PDF data...');
+      console.log('Sending to ChatGPT with extracted text...');
       
-      // Send to ChatGPT with PDF data
+      // Send to ChatGPT with extracted text
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: `You are an expert invoice data extraction system. Analyze the provided PDF document to extract structured data.
+            content: `You are an expert invoice data extraction system. Analyze the provided invoice text to extract structured data.
 
 CRITICAL INSTRUCTIONS:
-1. You will receive a PDF document as base64 data
-2. Extract the most accurate data possible from the PDF
+1. You will receive extracted text from an invoice PDF
+2. Extract the most accurate data possible from the text
 3. Return ONLY valid JSON with these exact fields:
    - vendorName: string (company/supplier name)
    - invoiceNumber: string (invoice ID/number)
@@ -82,22 +105,11 @@ CRITICAL INSTRUCTIONS:
 6. For dates, use YYYY-MM-DD format
 7. Handle multi-language invoices (Spanish, Portuguese, Italian, etc.)
 8. ALWAYS return valid JSON, even if you can't extract much data
-9. If you can't read the PDF, return a JSON with null values and low confidence`
+9. Look for keywords like "invoice", "factura", "fattura", "fatura" to confirm it's an invoice`
           },
           {
             role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Please extract invoice data from this PDF document. The document is attached as base64 data.`
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:application/pdf;base64,${pdfBase64}`
-                }
-              }
-            ]
+            content: `Please extract invoice data from this document text:\n\n${extractedText.substring(0, 3000)}`
           }
         ],
         max_tokens: 1000,
