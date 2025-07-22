@@ -38,7 +38,7 @@ const InvoiceTable: React.FC<InvoiceTableProps> = ({ invoices }) => {
         <p className="text-gray-500 mb-6">
           Start by clicking "Fetch New Invoices" to scan your Gmail for invoice attachments.
         </p>
-        <div className="bg-blue-50 rounded-lg p-4 text-left">
+        <div className="bg-blue-50/50 backdrop-blur-sm rounded-xl p-4 text-left border border-blue-100/50">
           <h4 className="font-medium text-blue-900 mb-2">What we'll look for:</h4>
           <ul className="text-sm text-blue-700 space-y-1">
             <li>• PDF and image attachments in your emails</li>
@@ -53,37 +53,37 @@ const InvoiceTable: React.FC<InvoiceTableProps> = ({ invoices }) => {
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+      <table className="min-w-full divide-y divide-gray-100">
+        <thead className="bg-gray-50/50 backdrop-blur-sm">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Invoice Details
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Vendor
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Amount
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Date
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Status
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Actions
             </th>
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className="divide-y divide-gray-100">
           {invoices.map((invoice) => (
-            <tr key={invoice.id} className="hover:bg-gray-50">
+            <tr key={invoice.id} className="hover:bg-white/50 transition-colors duration-150">
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex items-center">
                   <div className="flex-shrink-0 h-10 w-10">
-                    <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                      <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center shadow-sm">
+                      <svg className="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -94,7 +94,7 @@ const InvoiceTable: React.FC<InvoiceTableProps> = ({ invoices }) => {
                     </div>
                   </div>
                   <div className="ml-4">
-                    <div className="text-sm font-medium text-gray-900">
+                    <div className="text-sm font-semibold text-gray-900">
                       {invoice.invoiceNumber || 'No Invoice #'}
                     </div>
                     <div className="text-sm text-gray-500">
@@ -104,10 +104,10 @@ const InvoiceTable: React.FC<InvoiceTableProps> = ({ invoices }) => {
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm text-gray-900">{invoice.vendorName || 'Unknown Vendor'}</div>
+                <div className="text-sm font-medium text-gray-900">{invoice.vendorName || 'Unknown Vendor'}</div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm font-medium text-gray-900">
+                <div className="text-sm font-bold text-gray-900">
                   {formatCurrency(invoice.amount || 0, invoice.currency)}
                 </div>
               </td>
@@ -123,10 +123,10 @@ const InvoiceTable: React.FC<InvoiceTableProps> = ({ invoices }) => {
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <span
-                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                  className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
                     invoice.processed
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-yellow-100 text-yellow-800'
+                      ? 'bg-green-100 text-green-800 border border-green-200'
+                      : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
                   }`}
                 >
                   {invoice.processed ? 'Processed' : 'Processing'}
@@ -142,21 +142,14 @@ const InvoiceTable: React.FC<InvoiceTableProps> = ({ invoices }) => {
                       href={invoice.driveLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-900 transition-colors"
+                      className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium transition-colors"
                     >
-                      View File
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      <span>View</span>
                     </a>
                   )}
-                  <button className="text-gray-400 hover:text-gray-600 transition-colors">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                      />
-                    </svg>
-                  </button>
                 </div>
               </td>
             </tr>
