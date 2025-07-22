@@ -16,13 +16,15 @@ interface ActivityFeedProps {
   isVisible: boolean;
   onClose: () => void;
   onClearAll: () => void;
+  isImpersonating?: boolean;
 }
 
 const ActivityFeed: React.FC<ActivityFeedProps> = ({ 
   activities, 
   isVisible, 
   onClose, 
-  onClearAll 
+  onClearAll,
+  isImpersonating = false
 }) => {
   const getActivityIcon = (type: ActivityItem['type']) => {
     switch (type) {
@@ -105,7 +107,7 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({
   if (!isVisible) return null;
 
   return (
-    <div className="fixed right-0 top-16 h-[calc(100vh-4rem)] w-96 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-40">
+    <div className={`fixed right-0 w-96 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-40 ${isImpersonating ? 'top-26 h-[calc(100vh-6.5rem)]' : 'top-16 h-[calc(100vh-4rem)]'}`}>
       {/* Header */}
       <div className="flex items-center justify-between p-6 border-b border-gray-200">
         <div className="flex items-center space-x-3">
