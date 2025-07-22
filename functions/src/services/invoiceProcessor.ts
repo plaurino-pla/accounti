@@ -47,7 +47,19 @@ export class InvoiceProcessor {
       
       // Use ChatGPT to detect if it's an invoice
       const gptService = new GPTVisionService();
-      const gptData = await gptService.processInvoiceWithChatGPT(buffer, filename);
+      
+      // Determine if file is image or PDF based on filename extension
+      const fileExtension = filename.toLowerCase().split('.').pop();
+      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(fileExtension || '');
+      
+      let gptData;
+      if (isImage) {
+        console.log('=== DETECTING AS IMAGE ===');
+        gptData = await gptService.processInvoiceWithVision(buffer, filename);
+      } else {
+        console.log('=== DETECTING AS PDF ===');
+        gptData = await gptService.processInvoiceWithChatGPT(buffer, filename);
+      }
       
       // Use ChatGPT's invoice detection
       const isInvoice = gptData.isInvoice;
@@ -80,7 +92,19 @@ export class InvoiceProcessor {
       console.log('=== CHATGPT SERVICE INITIALIZED ===');
       
       console.log('=== CALLING CHATGPT API ===');
-      const gptData = await gptService.processInvoiceWithChatGPT(buffer, filename);
+      
+      // Determine if file is image or PDF based on filename extension
+      const fileExtension = filename.toLowerCase().split('.').pop();
+      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(fileExtension || '');
+      
+      let gptData;
+      if (isImage) {
+        console.log('=== PROCESSING AS IMAGE ===');
+        gptData = await gptService.processInvoiceWithVision(buffer, filename);
+      } else {
+        console.log('=== PROCESSING AS PDF ===');
+        gptData = await gptService.processInvoiceWithChatGPT(buffer, filename);
+      }
       
       console.log('=== CHATGPT SUCCESS ===');
       console.log('Extracted data:', gptData);

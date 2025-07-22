@@ -96,11 +96,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type === 'application/pdf') {
-      setSelectedFile(file);
-    } else if (file) {
-      alert('Please select a PDF file.');
-      setSelectedFile(null);
+    if (file) {
+      // Check if file is PDF or image
+      const isPDF = file.type === 'application/pdf';
+      const isImage = file.type.startsWith('image/');
+      
+      if (isPDF || isImage) {
+        setSelectedFile(file);
+      } else {
+        alert('Please select a PDF file or image (JPG, PNG, etc.).');
+        setSelectedFile(null);
+      }
     }
   };
 
@@ -510,12 +516,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
           <div className="mt-6">
             <h4 className="font-medium text-gray-900 mb-1">Manual Invoice Upload</h4>
             <p className="text-sm text-gray-600">
-              Upload a PDF invoice directly to your account.
+              Upload a PDF or image invoice directly to your account.
             </p>
             <div className="mt-4 flex items-center space-x-3">
               <input
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
                 onChange={handleFileSelect}
                 ref={fileInputRef}
                 className="hidden"
@@ -528,7 +534,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
                 <svg className="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span>Choose PDF</span>
+                <span>Choose File</span>
               </label>
               <button
                 onClick={handleManualUpload}
