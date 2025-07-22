@@ -121,13 +121,37 @@ export class SchedulerService {
           // Download attachment
           const buffer = await gmailService.downloadAttachment(email.id, part.body.attachmentId);
           
-          // Check if it's an invoice
+          // Check if it's an invoice first
           const { isInvoice, confidence } = await invoiceProcessor.isInvoiceAttachment(part.filename, buffer);
           
           if (isInvoice) {
-            console.log(`Processing invoice: ${part.filename} (confidence: ${confidence})`);
+            console.log(`Invoice detected: ${part.filename} (confidence: ${confidence})`);
             
-            // Process and save invoice
+            // Extract data for duplicate checking
+            let extractedData: any = null;
+            try {
+              extractedData = await invoiceProcessor.processInvoiceWithDocumentAI(buffer, part.filename);
+              extractedData.originalFilename = part.filename;
+            } catch (extractError) {
+              console.error(`Error extracting data from ${part.filename}:`, extractError);
+              continue;
+            }
+
+            // Enhanced duplicate check
+            const duplicateCheck = await invoiceProcessor.checkForDuplicateInvoice(
+              userId,
+              email.id,
+              part.body.attachmentId,
+              extractedData
+            );
+
+            if (duplicateCheck.isDuplicate) {
+              console.log(`Skipping duplicate invoice: ${duplicateCheck.reason}`);
+              continue;
+            }
+
+            // Process and save the new invoice
+            console.log(`Processing new invoice: ${part.filename}`);
             await invoiceProcessor.processAndSaveInvoice(
               userId,
               email.id,

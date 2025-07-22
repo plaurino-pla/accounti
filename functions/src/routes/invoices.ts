@@ -74,18 +74,7 @@ router.post('/scan', async (req, res) => {
           try {
             attachmentsProcessed++;
 
-            // Check if already processed
-            const isDuplicate = await invoiceProcessor.checkForDuplicateInvoice(
-              userId, 
-              email.id, 
-              attachment.attachmentId
-            );
-
-            if (isDuplicate) {
-              continue;
-            }
-
-            // Download attachment
+            // Download attachment first to check if it's an invoice
             let buffer: Buffer;
             try {
               buffer = await gmailService.downloadAttachment(email.id, attachment.attachmentId);
@@ -97,32 +86,65 @@ router.post('/scan', async (req, res) => {
               continue; // Skip this attachment
             }
 
-            // Check if it's an invoice
+            // Check if it's an invoice first
+            let isInvoice = false;
+            let extractedData: any = null;
+            
             try {
-              const { isInvoice, confidence } = await invoiceProcessor.isInvoiceAttachment(
+              const invoiceCheck = await invoiceProcessor.isInvoiceAttachment(
                 attachment.filename, 
                 buffer
               );
-
+              isInvoice = invoiceCheck.isInvoice;
+              
               if (isInvoice) {
-                console.log('=== CALLING PROCESS AND SAVE INVOICE ===');
-                console.log('Invoice detected, processing:', attachment.filename);
-                // Process and save invoice with Drive and Sheets integration
-                await invoiceProcessor.processAndSaveInvoice(
-                  userId,
-                  email.id,
-                  attachment.attachmentId,
-                  attachment.filename,
-                  buffer,
-                  accessToken
-                );
-                invoicesFound++;
+                // Extract data for duplicate checking
+                extractedData = await invoiceProcessor.processInvoiceWithDocumentAI(buffer, attachment.filename);
+                extractedData.originalFilename = attachment.filename;
               }
             } catch (invoiceError) {
-              const errorMsg = `Error processing invoice ${attachment.filename}: ${invoiceError}`;
+              const errorMsg = `Error checking if attachment is invoice ${attachment.filename}: ${invoiceError}`;
               console.error(errorMsg);
               errors.push(errorMsg);
-              // Continue with other attachments
+              continue;
+            }
+
+            if (!isInvoice) {
+              console.log(`Skipping non-invoice attachment: ${attachment.filename}`);
+              continue;
+            }
+
+            // Enhanced duplicate check with extracted data
+            const duplicateCheck = await invoiceProcessor.checkForDuplicateInvoice(
+              userId, 
+              email.id, 
+              attachment.attachmentId,
+              extractedData
+            );
+
+            if (duplicateCheck.isDuplicate) {
+              console.log(`Skipping duplicate invoice: ${duplicateCheck.reason}`);
+              continue;
+            }
+
+            // Process and save the new invoice
+            try {
+              console.log('=== PROCESSING NEW INVOICE ===');
+              console.log('Invoice detected, processing:', attachment.filename);
+              
+              await invoiceProcessor.processAndSaveInvoice(
+                userId,
+                email.id,
+                attachment.attachmentId,
+                attachment.filename,
+                buffer,
+                accessToken
+              );
+              invoicesFound++;
+            } catch (processError) {
+              const errorMsg = `Error processing invoice ${attachment.filename}: ${processError}`;
+              console.error(errorMsg);
+              errors.push(errorMsg);
             }
 
           } catch (attachmentError) {

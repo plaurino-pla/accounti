@@ -203,20 +203,110 @@ export class InvoiceProcessor {
     }
   }
 
-  // Check for duplicate invoices
-  async checkForDuplicateInvoice(userId: string, emailId: string, attachmentId: string): Promise<boolean> {
+  // Enhanced duplicate detection - checks multiple criteria
+  async checkForDuplicateInvoice(
+    userId: string, 
+    emailId: string, 
+    attachmentId: string,
+    extractedData?: Partial<ProcessedInvoice>
+  ): Promise<{ isDuplicate: boolean; reason?: string; existingInvoice?: any }> {
     try {
-      const snapshot = await db.collection('invoices')
+      console.log('=== CHECKING FOR DUPLICATES ===');
+      console.log('User ID:', userId);
+      console.log('Email ID:', emailId);
+      console.log('Attachment ID:', attachmentId);
+      console.log('Extracted data:', extractedData);
+
+      // 1. Check for exact same email/attachment combination
+      const exactMatch = await db.collection('invoices')
         .where('userId', '==', userId)
         .where('emailId', '==', emailId)
         .where('attachmentId', '==', attachmentId)
         .limit(1)
         .get();
       
-      return !snapshot.empty;
+      if (!exactMatch.empty) {
+        console.log('Duplicate found: Same email/attachment combination');
+        return { 
+          isDuplicate: true, 
+          reason: 'Same email and attachment already processed',
+          existingInvoice: exactMatch.docs[0].data()
+        };
+      }
+
+      // 2. If we have extracted data, check for business logic duplicates
+      if (extractedData) {
+        const { invoiceNumber, vendorName, amount, currency } = extractedData;
+        
+        // Check for same invoice number and vendor
+        if (invoiceNumber && vendorName) {
+          const invoiceNumberMatch = await db.collection('invoices')
+            .where('userId', '==', userId)
+            .where('invoiceNumber', '==', invoiceNumber)
+            .where('vendorName', '==', vendorName)
+            .limit(1)
+            .get();
+          
+          if (!invoiceNumberMatch.empty) {
+            console.log('Duplicate found: Same invoice number and vendor');
+            return { 
+              isDuplicate: true, 
+              reason: `Invoice #${invoiceNumber} from ${vendorName} already exists`,
+              existingInvoice: invoiceNumberMatch.docs[0].data()
+            };
+          }
+        }
+
+        // Check for same vendor, amount, and currency (within 30 days)
+        if (vendorName && amount && currency) {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          
+          const amountMatch = await db.collection('invoices')
+            .where('userId', '==', userId)
+            .where('vendorName', '==', vendorName)
+            .where('amount', '==', amount)
+            .where('currency', '==', currency)
+            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(thirtyDaysAgo))
+            .limit(1)
+            .get();
+          
+          if (!amountMatch.empty) {
+            console.log('Duplicate found: Same vendor, amount, and currency within 30 days');
+            return { 
+              isDuplicate: true, 
+              reason: `Invoice from ${vendorName} for ${amount} ${currency} already exists`,
+              existingInvoice: amountMatch.docs[0].data()
+            };
+          }
+        }
+
+        // Check for same filename (case-insensitive)
+        if (extractedData.originalFilename) {
+          const filenameMatch = await db.collection('invoices')
+            .where('userId', '==', userId)
+            .where('originalFilename', '==', extractedData.originalFilename)
+            .limit(1)
+            .get();
+          
+          if (!filenameMatch.empty) {
+            console.log('Duplicate found: Same filename');
+            return { 
+              isDuplicate: true, 
+              reason: `File "${extractedData.originalFilename}" already processed`,
+              existingInvoice: filenameMatch.docs[0].data()
+            };
+          }
+        }
+      }
+
+      console.log('No duplicates found');
+      return { isDuplicate: false };
+      
     } catch (error) {
       console.error('Error checking for duplicate invoice:', error);
-      return false;
+      // If there's an error checking for duplicates, assume it's not a duplicate
+      return { isDuplicate: false };
     }
   }
 } 
