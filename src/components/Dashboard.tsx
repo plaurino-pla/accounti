@@ -5,9 +5,10 @@ import InvoiceTable from './InvoiceTable';
 
 interface DashboardProps {
   user: User;
+  onSwitchToAdmin?: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ user }) => {
+const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
   const { signOut } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [stats, setStats] = useState<InvoiceStats>({
@@ -372,6 +373,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                   <img src={user.picture} alt={user.name} className="w-6 h-6 rounded-full ring-2 ring-white/50" />
                   <span className="text-sm font-medium text-gray-700">{user.name}</span>
                 </div>
+                
+                {onSwitchToAdmin && (
+                  <button
+                    onClick={onSwitchToAdmin}
+                    className="bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+                  >
+                    Admin View
+                  </button>
+                )}
                 
                 <button
                   onClick={signOut}

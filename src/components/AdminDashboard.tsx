@@ -34,7 +34,11 @@ interface ProcessingLog {
   triggerType: 'manual' | 'scheduled';
 }
 
-const AdminDashboard: React.FC = () => {
+interface AdminDashboardProps {
+  onSwitchToUser: () => void;
+}
+
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSwitchToUser }) => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
@@ -96,6 +100,12 @@ const AdminDashboard: React.FC = () => {
             </div>
             
             <div className="flex items-center space-x-4">
+              <button
+                onClick={onSwitchToUser}
+                className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Switch to User View
+              </button>
               <button
                 onClick={loadAdminData}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"

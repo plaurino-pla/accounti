@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
@@ -6,6 +6,7 @@ import AdminDashboard from './components/AdminDashboard';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
+  const [isAdminView, setIsAdminView] = useState(false);
 
   if (loading) {
     return (
@@ -21,10 +22,10 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {user ? (
-        isAdmin ? (
-          <AdminDashboard />
+        isAdmin && isAdminView ? (
+          <AdminDashboard onSwitchToUser={() => setIsAdminView(false)} />
         ) : (
-          <Dashboard user={user} />
+          <Dashboard user={user} onSwitchToAdmin={isAdmin ? () => setIsAdminView(true) : undefined} />
         )
       ) : (
         <LandingPage />
