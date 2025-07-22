@@ -241,148 +241,25 @@ router.post('/scan', async (req, res) => {
       return;
     }
 
-    // Regular processing (immediate)
-    const emails = await gmailService.getEmailsWithAttachments(timeRange);
-    console.log(`Processing ${emails.length} emails with attachments`);
+    // Regular processing - also run in background to avoid timeouts
+    console.log('Starting background processing for regular user');
     
-    let invoicesFound = 0;
-    let attachmentsProcessed = 0;
-    const errors: string[] = [];
-    const latestEmailDate = new Date(0);
+    // Start background processing
+    processRegularScanInBackground(userId, accessToken, timeRange);
     
-    // Add timeout protection - stop processing after 8 minutes to avoid function timeout
-    const startTime = Date.now();
-    const maxProcessingTime = 8 * 60 * 1000; // 8 minutes
-
-    // Process each email
-    for (const email of emails) {
-      // Check if we're approaching the timeout
-      const elapsedTime = Date.now() - startTime;
-      if (elapsedTime > maxProcessingTime) {
-        console.log(`Timeout protection: Stopping processing after ${elapsedTime}ms`);
-        break;
-      }
-      
-      try {
-        const emailDate = new Date(parseInt(email.internalDate));
-        if (emailDate > latestEmailDate) {
-          latestEmailDate.setTime(emailDate.getTime());
-        }
-
-        // Process each attachment
-        for (const attachment of email.attachments || []) {
-          try {
-            attachmentsProcessed++;
-
-            // Download attachment first to check if it's an invoice
-            let buffer: Buffer;
-            try {
-              buffer = await gmailService.downloadAttachment(email.id, attachment.attachmentId);
-              console.log(`Downloaded attachment: ${attachment.filename}, size: ${buffer.length} bytes`);
-            } catch (downloadError) {
-              const errorMsg = `Error downloading attachment ${attachment.filename}: ${downloadError}`;
-              console.error(errorMsg);
-              errors.push(errorMsg);
-              continue; // Skip this attachment
-            }
-
-            // Check if it's an invoice first
-            let isInvoice = false;
-            let extractedData: any = null;
-            
-            try {
-              const invoiceCheck = await invoiceProcessor.isInvoiceAttachment(
-                attachment.filename, 
-                buffer
-              );
-              isInvoice = invoiceCheck.isInvoice;
-              
-              if (isInvoice) {
-                // Extract data for duplicate checking
-                extractedData = await invoiceProcessor.processInvoiceWithDocumentAI(buffer, attachment.filename);
-                extractedData.originalFilename = attachment.filename;
-              }
-            } catch (invoiceError) {
-              const errorMsg = `Error checking if attachment is invoice ${attachment.filename}: ${invoiceError}`;
-              console.error(errorMsg);
-              errors.push(errorMsg);
-              continue;
-            }
-
-            if (!isInvoice) {
-              console.log(`Skipping non-invoice attachment: ${attachment.filename}`);
-              continue;
-            }
-
-            // Enhanced duplicate check with extracted data
-            const duplicateCheck = await invoiceProcessor.checkForDuplicateInvoice(
-              userId, 
-              email.id, 
-              attachment.attachmentId,
-              extractedData
-            );
-
-            if (duplicateCheck.isDuplicate) {
-              console.log(`Skipping duplicate invoice: ${duplicateCheck.reason}`);
-              continue;
-            }
-
-            // Process and save the new invoice
-            try {
-              console.log('=== PROCESSING NEW INVOICE ===');
-              console.log('Invoice detected, processing:', attachment.filename);
-              
-              await invoiceProcessor.processAndSaveInvoice(
-                userId,
-                email.id,
-                attachment.attachmentId,
-                attachment.filename,
-                buffer,
-                accessToken
-              );
-              invoicesFound++;
-            } catch (processError) {
-              const errorMsg = `Error processing invoice ${attachment.filename}: ${processError}`;
-              console.error(errorMsg);
-              errors.push(errorMsg);
-            }
-
-          } catch (attachmentError) {
-            const errorMsg = `Error processing attachment ${attachment.filename}: ${attachmentError}`;
-            console.error(errorMsg);
-            errors.push(errorMsg);
-          }
-        }
-
-      } catch (emailError) {
-        const errorMsg = `Error processing email ${email.id}: ${emailError}`;
-        console.error(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
-
-    // Update last processed timestamp
-    if (latestEmailDate.getTime() > 0) {
-      await gmailService.updateLastProcessedTimestamp(userId, latestEmailDate);
-    }
-
-    // Log processing results
-    await logProcessingResults(userId, {
-      emailsScanned: emails.length,
-      attachmentsProcessed,
-      invoicesFound,
-      errors,
-      startTime: new Date(),
-      endTime: new Date(),
-      triggerType: 'manual'
+    // Update user to mark as processing
+    await db.collection('users').doc(userId).update({
+      lastProcessedTimestamp: new Date(),
+      regularProcessing: true
     });
 
     res.json({
       success: true,
-      emailsScanned: emails.length,
-      attachmentsProcessed,
-      invoicesFound,
-      errors: errors.length > 0 ? errors : undefined
+      message: 'Scan started in background. This may take a few minutes to complete.',
+      emailsScanned: 0,
+      attachmentsProcessed: 0,
+      invoicesFound: 0,
+      isFirstTime: false
     });
 
   } catch (error) {
@@ -796,6 +673,105 @@ async function sendFirstTimeCompletionNotification(userId: string, invoiceCount:
 
   } catch (error) {
     console.error('Error sending first-time completion email:', error);
+  }
+}
+
+// Process regular scan in background (for existing users)
+async function processRegularScanInBackground(userId: string, accessToken: string, timeRange: Date) {
+  console.log(`Starting regular background scan for user ${userId}`);
+  
+  try {
+    // Initialize services
+    const gmailService = new GmailService(accessToken);
+    const invoiceProcessor = new InvoiceProcessor();
+    
+    // Get emails with attachments
+    const emails = await gmailService.getEmailsWithAttachments(timeRange);
+    console.log(`Regular scan: Processing ${emails.length} emails with attachments`);
+    
+    let invoicesFound = 0;
+    let attachmentsProcessed = 0;
+    const errors: string[] = [];
+    const latestEmailDate = new Date(0);
+    
+    // Process emails in chunks to avoid timeouts
+    const chunkSize = 5;
+    for (let i = 0; i < emails.length; i += chunkSize) {
+      const chunk = emails.slice(i, i + chunkSize);
+      console.log(`Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(emails.length / chunkSize)}`);
+      
+      for (const email of chunk) {
+        try {
+          const emailDate = new Date(parseInt(email.internalDate));
+          if (emailDate > latestEmailDate) {
+            latestEmailDate.setTime(emailDate.getTime());
+          }
+
+          // Process email attachments
+          const results = await invoiceProcessor.processEmailAttachments(
+            userId,
+            email.id,
+            email,
+            accessToken
+          );
+          
+          invoicesFound += results.invoicesFound;
+          attachmentsProcessed += results.attachmentsProcessed;
+          
+        } catch (emailError) {
+          const errorMsg = `Error processing email ${email.id}: ${emailError}`;
+          console.error(errorMsg);
+          errors.push(errorMsg);
+        }
+      }
+      
+      // Small delay between chunks to avoid rate limits
+      if (i + chunkSize < emails.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    // Update last processed timestamp
+    if (latestEmailDate.getTime() > 0) {
+      await db.collection('users').doc(userId).update({
+        lastProcessedTimestamp: latestEmailDate,
+        regularProcessing: false
+      });
+    } else {
+      await db.collection('users').doc(userId).update({
+        regularProcessing: false
+      });
+    }
+
+    // Log processing results
+    await logProcessingResults(userId, {
+      emailsScanned: emails.length,
+      attachmentsProcessed,
+      invoicesFound,
+      errors,
+      startTime: new Date(),
+      endTime: new Date(),
+      triggerType: 'manual'
+    });
+
+    // Send notification if invoices were found
+    if (invoicesFound > 0) {
+      try {
+        await sendInvoiceNotification(userId, invoicesFound);
+      } catch (notificationError) {
+        console.error('Error sending regular scan notification:', notificationError);
+      }
+    }
+
+    console.log(`Regular background scan completed for user ${userId}: ${invoicesFound} invoices found`);
+
+  } catch (error) {
+    console.error(`Error in regular background scan for user ${userId}:`, error);
+    
+    // Mark processing as complete even on error
+    await db.collection('users').doc(userId).update({
+      regularProcessing: false
+    });
   }
 }
 

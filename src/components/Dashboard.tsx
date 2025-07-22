@@ -217,34 +217,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
       const response = await invoiceAPI.scanInvoices(user.uid, currentAccessToken);
       
       if (response.data.success) {
-        if (response.data.isFirstTime) {
-          // First-time user - show background processing message
-          setProcessingStatus('First-time scan started in background. This may take a few minutes to complete. You can continue using the app while we process your emails.');
-          
-          // Set up Gmail webhook for real-time notifications (optional)
-          try {
-            await gmailAPI.setupWebhook(user.uid, currentAccessToken);
-            console.log('Gmail webhook set up successfully');
-          } catch (webhookError) {
-            console.log('Gmail webhook setup failed (optional feature):', webhookError);
-            // Don't show error to user, webhook is optional
-          }
-          
-          // Start polling for updates
-          startPollingForUpdates();
-        } else {
-          // Regular user - show immediate results
-          await loadInvoices();
-          await loadStats();
-          await loadSpreadsheetUrl();
-          
-          const message = `Found ${response.data.invoicesFound} new invoices from ${response.data.emailsScanned} emails.`;
-          if (response.data.errors && response.data.errors.length > 0) {
-            alert(`${message}\n\nSome errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`);
-          } else {
-            alert(message);
-          }
+        // Both first-time and regular users now use background processing
+        const isFirstTime = response.data.isFirstTime;
+        const message = isFirstTime 
+          ? 'First-time scan started in background. This may take a few minutes to complete. You can continue using the app while we process your emails.'
+          : 'Scan started in background. This may take a few minutes to complete. You can continue using the app while we process your emails.';
+        
+        setProcessingStatus(message);
+        
+        // Set up Gmail webhook for real-time notifications (optional)
+        try {
+          await gmailAPI.setupWebhook(user.uid, currentAccessToken);
+          console.log('Gmail webhook set up successfully');
+        } catch (webhookError) {
+          console.log('Gmail webhook setup failed (optional feature):', webhookError);
+          // Don't show error to user, webhook is optional
         }
+        
+        // Start polling for updates
+        startPollingForUpdates();
       } else {
         throw new Error('Scan failed');
       }
