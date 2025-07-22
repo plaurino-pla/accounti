@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User, Invoice, InvoiceStats, ProcessingLog, invoiceAPI, accountAPI, sheetsAPI, driveAPI, authAPI } from '../services/api';
 import InvoiceTable from './InvoiceTable';
@@ -17,8 +17,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     vendorBreakdown: {}
   });
   const [loading, setLoading] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -85,6 +88,80 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       setSpreadsheetUrl(response.data.url);
     } catch (error) {
       console.error('Failed to load spreadsheet URL:', error);
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      setSelectedFile(file);
+    } else if (file) {
+      alert('Please select a PDF file.');
+      setSelectedFile(null);
+    }
+  };
+
+  const handleManualUpload = async () => {
+    if (!selectedFile) {
+      alert('Please select a PDF file to upload.');
+      return;
+    }
+
+    setUploadLoading(true);
+    try {
+      let currentAccessToken = user.accessToken;
+      
+      if (user.refreshToken) {
+        try {
+          const refreshResponse = await authAPI.refreshToken(user.uid);
+          currentAccessToken = refreshResponse.data.accessToken;
+          const updatedUser = { ...user, accessToken: currentAccessToken };
+          localStorage.setItem('accounti_user', JSON.stringify(updatedUser));
+        } catch (refreshError) {
+          console.log('Token refresh failed, proceeding with current token');
+        }
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('userId', user.uid);
+      formData.append('accessToken', currentAccessToken);
+
+      const response = await invoiceAPI.uploadManualInvoice(formData);
+      
+      if (response.data.success) {
+        await loadInvoices();
+        await loadStats();
+        await loadSpreadsheetUrl();
+        
+        const message = `Invoice uploaded successfully! Found ${response.data.invoicesFound} invoice from uploaded file.`;
+        if (response.data.errors && response.data.errors.length > 0) {
+          alert(`${message}\n\nSome errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`);
+        } else {
+          alert(message);
+        }
+        
+        // Reset file selection
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      } else {
+        throw new Error('Upload failed');
+      }
+    } catch (error: any) {
+      console.error('Manual upload error:', error);
+      
+      if (error.response?.status === 401) {
+        alert('Your session has expired. Please sign in again.');
+        localStorage.removeItem('accounti_user');
+        window.location.reload();
+      } else {
+        alert(`Failed to upload invoice. Error: ${error.message}`);
+      }
+    } finally {
+      setUploadLoading(false);
     }
   };
 
@@ -377,6 +454,51 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
               >
                 {loading ? 'Scanning...' : 'Scan Now'}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h4 className="font-medium text-gray-900 mb-1">Manual Invoice Upload</h4>
+            <p className="text-sm text-gray-600">
+              Upload a PDF invoice directly to your account.
+            </p>
+            <div className="mt-4 flex items-center space-x-3">
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={handleFileSelect}
+                ref={fileInputRef}
+                className="hidden"
+                id="invoice-upload-input"
+              />
+              <label
+                htmlFor="invoice-upload-input"
+                className="relative group bg-white/60 backdrop-blur-sm rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white/70 transition-colors cursor-pointer"
+              >
+                <svg className="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Choose PDF</span>
+              </label>
+              <button
+                onClick={handleManualUpload}
+                disabled={uploadLoading || !selectedFile}
+                className="relative group bg-gradient-to-r from-green-600 to-teal-600 text-white px-4 py-2 rounded-lg font-medium hover:from-green-700 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
+              >
+                {uploadLoading ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                    <span>Uploading...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>Upload Invoice</span>
+                  </div>
+                )}
               </button>
             </div>
           </div>

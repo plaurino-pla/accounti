@@ -1,11 +1,163 @@
 import express from 'express';
 import * as admin from 'firebase-admin';
+import multer from 'multer';
 import { GmailService } from '../services/gmailService';
 import { InvoiceProcessor, ProcessedInvoice } from '../services/invoiceProcessor';
 import { SchedulerService } from '../services/scheduler';
 
 const router = express.Router();
 const db = admin.firestore();
+
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'));
+    }
+  },
+});
+
+// Manual invoice upload endpoint
+router.post('/upload', upload.single('file'), async (req, res) => {
+  console.log('=== MANUAL UPLOAD ROUTE CALLED ===');
+  try {
+    const { userId, accessToken } = req.body;
+    const file = req.file;
+    
+    if (!userId || !accessToken) {
+      res.status(400).json({ error: 'Missing userId or accessToken' });
+      return;
+    }
+
+    if (!file) {
+      res.status(400).json({ error: 'No file uploaded' });
+      return;
+    }
+
+    console.log('Uploaded file:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
+
+    // Initialize services
+    const invoiceProcessor = new InvoiceProcessor();
+
+    // Check if it's an invoice first
+    let isInvoice = false;
+    let extractedData: any = null;
+    
+    try {
+      const invoiceCheck = await invoiceProcessor.isInvoiceAttachment(
+        file.originalname, 
+        file.buffer
+      );
+      isInvoice = invoiceCheck.isInvoice;
+      
+      if (isInvoice) {
+        // Extract data for duplicate checking
+        extractedData = await invoiceProcessor.processInvoiceWithDocumentAI(file.buffer, file.originalname);
+        extractedData.originalFilename = file.originalname;
+      }
+    } catch (invoiceError) {
+      const errorMsg = `Error checking if file is invoice ${file.originalname}: ${invoiceError}`;
+      console.error(errorMsg);
+      res.status(500).json({ 
+        success: false, 
+        error: errorMsg,
+        invoicesFound: 0,
+        emailsScanned: 0,
+        attachmentsProcessed: 0
+      });
+      return;
+    }
+
+    if (!isInvoice) {
+      console.log(`Skipping non-invoice file: ${file.originalname}`);
+      res.json({
+        success: true,
+        invoicesFound: 0,
+        emailsScanned: 0,
+        attachmentsProcessed: 1,
+        message: 'File uploaded but not identified as an invoice'
+      });
+      return;
+    }
+
+    // Generate unique IDs for manual upload
+    const emailId = `manual_${Date.now()}`;
+    const attachmentId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Enhanced duplicate check with extracted data
+    const duplicateCheck = await invoiceProcessor.checkForDuplicateInvoice(
+      userId, 
+      emailId, 
+      attachmentId,
+      extractedData
+    );
+
+    if (duplicateCheck.isDuplicate) {
+      console.log(`Skipping duplicate invoice: ${duplicateCheck.reason}`);
+      res.json({
+        success: true,
+        invoicesFound: 0,
+        emailsScanned: 0,
+        attachmentsProcessed: 1,
+        message: `File uploaded but duplicate detected: ${duplicateCheck.reason}`
+      });
+      return;
+    }
+
+    // Process and save the new invoice
+    try {
+      console.log('=== PROCESSING MANUAL UPLOAD ===');
+      console.log('Invoice detected, processing:', file.originalname);
+      
+      await invoiceProcessor.processAndSaveInvoice(
+        userId,
+        emailId,
+        attachmentId,
+        file.originalname,
+        file.buffer,
+        accessToken
+      );
+
+      res.json({
+        success: true,
+        invoicesFound: 1,
+        emailsScanned: 0,
+        attachmentsProcessed: 1,
+        message: 'Invoice uploaded and processed successfully'
+      });
+    } catch (processError) {
+      const errorMsg = `Error processing uploaded invoice ${file.originalname}: ${processError}`;
+      console.error(errorMsg);
+      res.status(500).json({ 
+        success: false, 
+        error: errorMsg,
+        invoicesFound: 0,
+        emailsScanned: 0,
+        attachmentsProcessed: 1
+      });
+    }
+
+  } catch (error) {
+    console.error('Manual upload error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to process uploaded file',
+      invoicesFound: 0,
+      emailsScanned: 0,
+      attachmentsProcessed: 0
+    });
+  }
+});
 
 // Scan for new invoices
 router.post('/scan', async (req, res) => {
