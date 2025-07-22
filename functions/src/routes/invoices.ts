@@ -205,8 +205,14 @@ router.post('/scan', async (req, res) => {
       console.log('First-time user: scanning last 30 days');
     } else {
       // Regular: scan since last processed (with some overlap)
-      timeRange = new Date(lastProcessed.toDate().getTime() - 12 * 60 * 60 * 1000);
-      console.log('Regular user: scanning since last processed');
+      if (lastProcessed) {
+        timeRange = new Date(lastProcessed.toDate().getTime() - 12 * 60 * 60 * 1000);
+        console.log('Regular user: scanning since last processed');
+      } else {
+        // No last processed timestamp, scan last 24 hours
+        timeRange = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        console.log('Regular user: no last processed timestamp, scanning last 24 hours');
+      }
     }
     
     console.log('Searching for emails after:', timeRange.toISOString());
