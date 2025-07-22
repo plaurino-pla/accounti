@@ -2,6 +2,7 @@ import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
+import AdminDashboard from './components/AdminDashboard';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -14,10 +15,17 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Check if user is admin (you can modify this logic)
+  const isAdmin = user?.email === 'pablolaurino@gmail.com' || user?.email === 'admin@accounti.com';
+
   return (
     <div className="min-h-screen bg-gray-50">
       {user ? (
-        <Dashboard user={user} />
+        isAdmin ? (
+          <AdminDashboard />
+        ) : (
+          <Dashboard user={user} />
+        )
       ) : (
         <LandingPage />
       )}

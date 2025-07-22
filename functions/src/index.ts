@@ -12,6 +12,7 @@ import invoiceRoutes from './routes/invoices';
 import accountRoutes from './routes/account';
 import driveRoutes from './routes/drive';
 import sheetsRoutes from './routes/sheets';
+import adminRoutes from './routes/admin';
 
 // Import scheduler service
 import { SchedulerService } from './services/scheduler';
@@ -29,6 +30,7 @@ app.use('/invoices', invoiceRoutes);
 app.use('/account', accountRoutes);
 app.use('/drive', driveRoutes);
 app.use('/sheets', sheetsRoutes);
+app.use('/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

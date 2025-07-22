@@ -193,6 +193,47 @@ export const accountAPI = {
     }),
 };
 
+// Admin API
+export const adminAPI = {
+  getStats: () =>
+    api.get<{
+      totalUsers: number;
+      activeUsers: number;
+      totalInvoices: number;
+      totalAmount: number;
+      averageInvoicesPerUser: number;
+      averageAmountPerUser: number;
+    }>('/admin/stats'),
+  
+  getAllUsers: () =>
+    api.get<{ users: Array<{
+      uid: string;
+      email: string;
+      name: string;
+      picture: string;
+      createdAt: Date;
+      lastProcessedTimestamp?: Date;
+      invoiceCount: number;
+      totalAmount: number;
+    }> }>('/admin/users'),
+  
+  getProcessingLogs: (limit = 50) =>
+    api.get<{ logs: Array<{
+      id: string;
+      userId: string;
+      userEmail: string;
+      emailsScanned: number;
+      attachmentsProcessed: number;
+      invoicesFound: number;
+      errors: string[];
+      startTime: Date;
+      endTime: Date;
+      triggerType: 'manual' | 'scheduled';
+    }> }>('/admin/logs', {
+      params: { limit }
+    }),
+};
+
 // Health check
 export const healthAPI = {
   check: () => api.get<{ status: string; timestamp: string }>('/health'),
