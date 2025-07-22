@@ -392,13 +392,15 @@ router.post('/trigger-scheduled', async (req, res) => {
 async function processFirstTimeScanInBackground(userId: string, accessToken: string, timeRange: Date) {
   try {
     console.log(`=== BACKGROUND FIRST-TIME PROCESSING FOR USER ${userId} ===`);
+    console.log(`Scanning emails from: ${timeRange.toISOString()} to now`);
     
     const gmailService = new GmailService(accessToken);
     const invoiceProcessor = new InvoiceProcessor();
 
-    // Fetch emails with attachments
+    // Fetch emails with attachments for the last 30 days
     const emails = await gmailService.getEmailsWithAttachments(timeRange);
     console.log(`Found ${emails.length} emails with attachments for first-time processing`);
+    console.log(`Time range: ${timeRange.toISOString()} to ${new Date().toISOString()}`);
     
     // Debug: Log email details
     emails.forEach((email, index) => {
@@ -412,7 +414,7 @@ async function processFirstTimeScanInBackground(userId: string, accessToken: str
     const startTime = new Date();
 
     // Process emails in chunks to avoid timeouts
-    const chunkSize = 10;
+    const chunkSize = 5; // Smaller chunks for better reliability
     for (let i = 0; i < emails.length; i += chunkSize) {
       const chunk = emails.slice(i, i + chunkSize);
       console.log(`Processing chunk ${Math.floor(i/chunkSize) + 1}/${Math.ceil(emails.length/chunkSize)}`);
@@ -540,10 +542,11 @@ async function processFirstTimeScanInBackground(userId: string, accessToken: str
     });
 
     console.log(`=== FIRST-TIME PROCESSING COMPLETE ===`);
-    console.log(`Emails scanned: ${totalEmailsScanned}`);
+    console.log(`Emails scanned: ${totalEmailsScanned}/${emails.length}`);
     console.log(`Attachments processed: ${totalAttachmentsProcessed}`);
     console.log(`Invoices found: ${totalInvoicesFound}`);
     console.log(`Errors: ${errors.length}`);
+    console.log(`Processing time: ${Date.now() - startTime.getTime()}ms`);
 
     // Send completion notification
     if (totalInvoicesFound > 0) {

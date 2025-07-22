@@ -46,7 +46,7 @@ export class GmailService {
       const response = await this.gmail.users.messages.list({
         userId: 'me',
         q: query,
-        maxResults: 50 // Reduced from 100 to 50 for faster processing
+        maxResults: 100 // Increased to get more emails for 30-day scan
       });
 
       const messages = response.data.messages || [];
@@ -58,8 +58,8 @@ export class GmailService {
 
       const detailedMessages: EmailMessage[] = [];
 
-      // Get detailed information for each message (limit to first 10 to avoid timeouts)
-      const messagesToProcess = messages.slice(0, 10);
+      // Get detailed information for each message (process all messages for first-time scan)
+      const messagesToProcess = messages;
       
       for (const message of messagesToProcess) {
         try {
