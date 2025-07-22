@@ -220,12 +220,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
           // First-time user - show background processing message
           alert(response.data.message || 'First-time scan started in background. This may take a few minutes to complete.');
           
-          // Set up Gmail webhook for real-time notifications
+          // Set up Gmail webhook for real-time notifications (optional)
           try {
             await gmailAPI.setupWebhook(user.uid, currentAccessToken);
             console.log('Gmail webhook set up successfully');
           } catch (webhookError) {
-            console.error('Failed to set up Gmail webhook:', webhookError);
+            console.log('Gmail webhook setup failed (optional feature):', webhookError);
             // Don't show error to user, webhook is optional
           }
         } else {

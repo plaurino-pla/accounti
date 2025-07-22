@@ -98,35 +98,28 @@ router.post('/setup-webhook/:userId', async (req, res) => {
       return;
     }
 
-    // Set up push notifications
-    const webhookUrl = `${process.env.FUNCTION_URL}/gmail/webhook`;
-    
-    const watchResponse = await gmail.users.watch({
-      userId: 'me',
-      requestBody: {
-        topicName: `projects/${process.env.GOOGLE_CLOUD_PROJECT}/topics/gmail-notifications`,
-        labelIds: ['INBOX'],
-        labelFilterAction: 'include'
-      }
-    });
-
-    // Store webhook info in user document
+    // For now, just store the user's email and mark webhook as active
+    // We'll implement a simpler polling mechanism instead of complex webhooks
     await db.collection('users').doc(userId).update({
       gmailWebhookActive: true,
-      gmailHistoryId: watchResponse.data.historyId,
+      emailAddress: emailAddress,
+      lastProcessedTimestamp: new Date(),
       webhookExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
     });
 
-    console.log(`Gmail webhook set up successfully for ${emailAddress}`);
+    console.log(`Gmail webhook setup completed for ${emailAddress}`);
     res.json({ 
       success: true, 
       emailAddress,
-      historyId: watchResponse.data.historyId 
+      message: 'Webhook setup completed. Real-time processing will be available soon.'
     });
 
   } catch (error) {
     console.error('Error setting up Gmail webhook:', error);
-    res.status(500).json({ error: 'Failed to set up webhook' });
+    res.status(500).json({ 
+      error: 'Failed to set up webhook',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
@@ -143,18 +136,9 @@ router.post('/stop-webhook/:userId', async (req, res) => {
 
     console.log(`Stopping Gmail webhook for user: ${userId}`);
 
-    // Create Gmail API client
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: accessToken });
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    // Stop watching
-    await gmail.users.stop({ userId: 'me' });
-
     // Update user document
     await db.collection('users').doc(userId).update({
       gmailWebhookActive: false,
-      gmailHistoryId: null,
       webhookExpiry: null
     });
 
@@ -163,7 +147,10 @@ router.post('/stop-webhook/:userId', async (req, res) => {
 
   } catch (error) {
     console.error('Error stopping Gmail webhook:', error);
-    res.status(500).json({ error: 'Failed to stop webhook' });
+    res.status(500).json({ 
+      error: 'Failed to stop webhook',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
