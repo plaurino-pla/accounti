@@ -1,5 +1,6 @@
 import express from 'express';
 import * as admin from 'firebase-admin';
+import { google } from 'googleapis';
 import { GmailService } from '../services/gmailService';
 import { InvoiceProcessor, ProcessedInvoice } from '../services/invoiceProcessor';
 import { SchedulerService } from '../services/scheduler';
@@ -180,26 +181,52 @@ router.post('/scan', async (req, res) => {
     const gmailService = new GmailService(accessToken);
     const invoiceProcessor = new InvoiceProcessor();
 
-    // Get last processed timestamp
-    const lastProcessedDate = await gmailService.getLastProcessedTimestamp(userId);
-    
-    let searchDate: Date;
-    
-    if (!lastProcessedDate) {
-      // First time user - scan last 12 hours
-      console.log('First time user detected, scanning last 12 hours');
-      searchDate = new Date(Date.now() - 12 * 60 * 60 * 1000);
+    // Get user's last processed timestamp and first-time status
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    const lastProcessed = userData?.lastProcessedTimestamp;
+    const isFirstTime = !lastProcessed;
+
+    // Calculate time range
+    let timeRange: Date;
+    if (isFirstTime) {
+      // First time: scan last 30 days
+      timeRange = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      console.log('First-time user: scanning last 30 days');
     } else {
-      // Returning user - scan from last processed email onwards
-      console.log('Returning user, scanning from last processed email');
-      searchDate = lastProcessedDate;
+      // Regular: scan since last processed (with some overlap)
+      timeRange = new Date(lastProcessed.toDate().getTime() - 12 * 60 * 60 * 1000);
+      console.log('Regular user: scanning since last processed');
     }
     
-    console.log('Searching for emails after:', searchDate.toISOString());
+    console.log('Searching for emails after:', timeRange.toISOString());
     
-    // Get emails with attachments from the search date
-    const emails = await gmailService.getEmailsWithAttachments(searchDate);
-    
+    // For first-time users, start background processing and return immediately
+    if (isFirstTime) {
+      console.log('Starting background processing for first-time user');
+      
+      // Start background processing
+      processFirstTimeScanInBackground(userId, accessToken, timeRange);
+      
+      // Update user to mark as not first-time anymore
+      await db.collection('users').doc(userId).update({
+        lastProcessedTimestamp: new Date(),
+        firstTimeProcessing: true
+      });
+
+      res.json({
+        success: true,
+        message: 'First-time scan started in background. This may take a few minutes to complete.',
+        emailsScanned: 0,
+        attachmentsProcessed: 0,
+        invoicesFound: 0,
+        isFirstTime: true
+      });
+      return;
+    }
+
+    // Regular processing (immediate)
+    const emails = await gmailService.getEmailsWithAttachments(timeRange);
     console.log(`Processing ${emails.length} emails with attachments`);
     
     let invoicesFound = 0;
@@ -463,5 +490,297 @@ router.post('/trigger-scheduled', async (req, res) => {
     res.status(500).json({ error: 'Failed to trigger scheduled processing' });
   }
 });
+
+// Background processing for first-time users (30 days)
+async function processFirstTimeScanInBackground(userId: string, accessToken: string, timeRange: Date) {
+  try {
+    console.log(`=== BACKGROUND FIRST-TIME PROCESSING FOR USER ${userId} ===`);
+    
+    const gmailService = new GmailService(accessToken);
+    const invoiceProcessor = new InvoiceProcessor();
+
+    // Fetch emails with attachments
+    const emails = await gmailService.getEmailsWithAttachments(timeRange);
+    console.log(`Found ${emails.length} emails with attachments for first-time processing`);
+
+    let totalInvoicesFound = 0;
+    let totalEmailsScanned = 0;
+    let totalAttachmentsProcessed = 0;
+    const errors: string[] = [];
+    const startTime = new Date();
+
+    // Process emails in chunks to avoid timeouts
+    const chunkSize = 10;
+    for (let i = 0; i < emails.length; i += chunkSize) {
+      const chunk = emails.slice(i, i + chunkSize);
+      console.log(`Processing chunk ${Math.floor(i/chunkSize) + 1}/${Math.ceil(emails.length/chunkSize)}`);
+      
+      for (const email of chunk) {
+        try {
+          totalEmailsScanned++;
+          
+          // Process each attachment
+          for (const attachment of email.attachments || []) {
+            try {
+              totalAttachmentsProcessed++;
+
+              // Download attachment
+              let buffer: Buffer;
+              try {
+                buffer = await gmailService.downloadAttachment(email.id, attachment.attachmentId);
+                console.log(`Downloaded attachment: ${attachment.filename}, size: ${buffer.length} bytes`);
+              } catch (downloadError) {
+                const errorMsg = `Error downloading attachment ${attachment.filename}: ${downloadError}`;
+                console.error(errorMsg);
+                errors.push(errorMsg);
+                continue;
+              }
+
+              // Check if it's an invoice
+              let isInvoice = false;
+              let extractedData: any = null;
+              
+              try {
+                const invoiceCheck = await invoiceProcessor.isInvoiceAttachment(
+                  attachment.filename, 
+                  buffer
+                );
+                isInvoice = invoiceCheck.isInvoice;
+                
+                if (isInvoice) {
+                  extractedData = await invoiceProcessor.processInvoiceWithDocumentAI(buffer, attachment.filename);
+                  extractedData.originalFilename = attachment.filename;
+                }
+              } catch (invoiceError) {
+                const errorMsg = `Error checking if attachment is invoice ${attachment.filename}: ${invoiceError}`;
+                console.error(errorMsg);
+                errors.push(errorMsg);
+                continue;
+              }
+
+              if (!isInvoice) {
+                console.log(`Skipping non-invoice attachment: ${attachment.filename}`);
+                continue;
+              }
+
+              // Check for duplicates
+              const duplicateCheck = await invoiceProcessor.checkForDuplicateInvoice(
+                userId, 
+                email.id, 
+                attachment.attachmentId,
+                extractedData
+              );
+
+              if (duplicateCheck.isDuplicate) {
+                console.log(`Skipping duplicate invoice: ${duplicateCheck.reason}`);
+                continue;
+              }
+
+              // Process and save the invoice
+              try {
+                await invoiceProcessor.processAndSaveInvoice(
+                  userId,
+                  email.id,
+                  attachment.attachmentId,
+                  attachment.filename,
+                  buffer,
+                  accessToken
+                );
+
+                totalInvoicesFound++;
+                console.log(`Successfully processed invoice: ${attachment.filename}`);
+                
+                // Send notification for each invoice found
+                await sendInvoiceNotification(userId, 1);
+
+              } catch (processError) {
+                const errorMsg = `Error processing invoice ${attachment.filename}: ${processError}`;
+                console.error(errorMsg);
+                errors.push(errorMsg);
+              }
+
+            } catch (attachmentError) {
+              const errorMsg = `Error processing attachment ${attachment.filename}: ${attachmentError}`;
+              console.error(errorMsg);
+              errors.push(errorMsg);
+            }
+          }
+
+        } catch (emailError) {
+          const errorMsg = `Error processing email ${email.id}: ${emailError}`;
+          console.error(errorMsg);
+          errors.push(errorMsg);
+        }
+      }
+
+      // Small delay between chunks to avoid rate limiting
+      if (i + chunkSize < emails.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    // Update user's processing status
+    await db.collection('users').doc(userId).update({
+      firstTimeProcessing: false,
+      lastProcessedTimestamp: new Date()
+    });
+
+    // Log processing results
+    await logProcessingResults(userId, {
+      emailsScanned: totalEmailsScanned,
+      attachmentsProcessed: totalAttachmentsProcessed,
+      invoicesFound: totalInvoicesFound,
+      errors,
+      startTime,
+      endTime: new Date(),
+      triggerType: 'manual'
+    });
+
+    console.log(`=== FIRST-TIME PROCESSING COMPLETE ===`);
+    console.log(`Emails scanned: ${totalEmailsScanned}`);
+    console.log(`Attachments processed: ${totalAttachmentsProcessed}`);
+    console.log(`Invoices found: ${totalInvoicesFound}`);
+    console.log(`Errors: ${errors.length}`);
+
+    // Send completion notification
+    if (totalInvoicesFound > 0) {
+      await sendFirstTimeCompletionNotification(userId, totalInvoicesFound, totalEmailsScanned);
+    }
+
+  } catch (error) {
+    console.error('Error in background first-time processing:', error);
+    
+    // Update user's processing status even on error
+    await db.collection('users').doc(userId).update({
+      firstTimeProcessing: false,
+      lastProcessedTimestamp: new Date()
+    });
+  }
+}
+
+// Send notification email when new invoice is found
+async function sendInvoiceNotification(userId: string, invoiceCount: number) {
+  try {
+    // Get user data
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    if (!userData?.email) {
+      console.log('No email found for user:', userId);
+      return;
+    }
+
+    // Create Gmail API client (using service account or app-level credentials)
+    const { google } = require('googleapis');
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ 
+      access_token: process.env.GMAIL_SERVICE_ACCESS_TOKEN 
+    });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const subject = invoiceCount === 1 
+      ? 'New Invoice Found - Accounti' 
+      : `${invoiceCount} New Invoices Found - Accounti`;
+
+    const message = `
+      Hi ${userData.name || 'there'},
+
+      Great news! We found ${invoiceCount === 1 ? 'a new invoice' : `${invoiceCount} new invoices`} in your Gmail.
+
+      ${invoiceCount === 1 ? 'The invoice has been' : 'These invoices have been'} automatically processed and added to your account.
+
+      You can view ${invoiceCount === 1 ? 'it' : 'them'} in your dashboard: https://accounti-4698b.web.app
+
+      Best regards,
+      The Accounti Team
+    `;
+
+    // Create email
+    const email = [
+      `From: Accounti <noreply@accounti.com>`,
+      `To: ${userData.email}`,
+      `Subject: ${subject}`,
+      `Content-Type: text/plain; charset=utf-8`,
+      ``,
+      message
+    ].join('\r\n');
+
+    const encodedEmail = Buffer.from(email).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: encodedEmail
+      }
+    });
+
+    console.log(`Notification email sent to ${userData.email}`);
+
+  } catch (error) {
+    console.error('Error sending notification email:', error);
+  }
+}
+
+// Send notification for first-time completion
+async function sendFirstTimeCompletionNotification(userId: string, invoiceCount: number, emailCount: number) {
+  try {
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    if (!userData?.email) {
+      console.log('No email found for user:', userId);
+      return;
+    }
+
+    const { google } = require('googleapis');
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ 
+      access_token: process.env.GMAIL_SERVICE_ACCESS_TOKEN 
+    });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const subject = 'Welcome to Accounti - Your First Scan is Complete!';
+
+    const message = `
+      Hi ${userData.name || 'there'},
+
+      Welcome to Accounti! Your first scan is now complete.
+
+      We scanned ${emailCount} emails from the last 30 days and found ${invoiceCount} invoices.
+
+      All invoices have been automatically processed and added to your account.
+
+      You can view them in your dashboard: https://accounti-4698b.web.app
+
+      From now on, we'll automatically scan for new invoices in real-time!
+
+      Best regards,
+      The Accounti Team
+    `;
+
+    const email = [
+      `From: Accounti <noreply@accounti.com>`,
+      `To: ${userData.email}`,
+      `Subject: ${subject}`,
+      `Content-Type: text/plain; charset=utf-8`,
+      ``,
+      message
+    ].join('\r\n');
+
+    const encodedEmail = Buffer.from(email).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: encodedEmail
+      }
+    });
+
+    console.log(`First-time completion email sent to ${userData.email}`);
+
+  } catch (error) {
+    console.error('Error sending first-time completion email:', error);
+  }
+}
 
 export default router; 

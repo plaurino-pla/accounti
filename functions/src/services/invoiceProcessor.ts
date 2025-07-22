@@ -2,6 +2,7 @@ import * as admin from 'firebase-admin';
 import { DriveService } from './driveService';
 import { SheetsService, SheetRow } from './sheetsService';
 import { GPTVisionService, GPTExtractedData } from './gptVisionService';
+import { GmailService } from './gmailService';
 
 const db = admin.firestore();
 
@@ -128,6 +129,101 @@ export class InvoiceProcessor {
       console.error('Error:', error);
       throw new Error(`ChatGPT processing failed: ${(error as Error).message}`);
     }
+  }
+
+  // Process email attachments and return results
+  async processEmailAttachments(
+    userId: string,
+    emailId: string,
+    email: any,
+    accessToken: string
+  ): Promise<{ invoicesFound: number; attachmentsProcessed: number }> {
+    console.log(`=== PROCESSING EMAIL ATTACHMENTS ===`);
+    console.log(`Email ID: ${emailId}`);
+    console.log(`Attachments: ${email.attachments?.length || 0}`);
+
+    let invoicesFound = 0;
+    let attachmentsProcessed = 0;
+
+    // Process each attachment
+    for (const attachment of email.attachments || []) {
+      try {
+        attachmentsProcessed++;
+
+        // Download attachment
+        const gmailService = new GmailService(accessToken);
+        let buffer: Buffer;
+        try {
+          buffer = await gmailService.downloadAttachment(emailId, attachment.attachmentId);
+          console.log(`Downloaded attachment: ${attachment.filename}, size: ${buffer.length} bytes`);
+        } catch (downloadError) {
+          console.error(`Error downloading attachment ${attachment.filename}:`, downloadError);
+          continue;
+        }
+
+        // Check if it's an invoice
+        let isInvoice = false;
+        let extractedData: any = null;
+        
+        try {
+          const invoiceCheck = await this.isInvoiceAttachment(attachment.filename, buffer);
+          isInvoice = invoiceCheck.isInvoice;
+          
+          if (isInvoice) {
+            extractedData = await this.processInvoiceWithDocumentAI(buffer, attachment.filename);
+            extractedData.originalFilename = attachment.filename;
+          }
+        } catch (invoiceError) {
+          console.error(`Error checking if attachment is invoice ${attachment.filename}:`, invoiceError);
+          continue;
+        }
+
+        if (!isInvoice) {
+          console.log(`Skipping non-invoice attachment: ${attachment.filename}`);
+          continue;
+        }
+
+        // Check for duplicates
+        const duplicateCheck = await this.checkForDuplicateInvoice(
+          userId, 
+          emailId, 
+          attachment.attachmentId,
+          extractedData
+        );
+
+        if (duplicateCheck.isDuplicate) {
+          console.log(`Skipping duplicate invoice: ${duplicateCheck.reason}`);
+          continue;
+        }
+
+        // Process and save the invoice
+        try {
+          await this.processAndSaveInvoice(
+            userId,
+            emailId,
+            attachment.attachmentId,
+            attachment.filename,
+            buffer,
+            accessToken
+          );
+
+          invoicesFound++;
+          console.log(`Successfully processed invoice: ${attachment.filename}`);
+
+        } catch (processError) {
+          console.error(`Error processing invoice ${attachment.filename}:`, processError);
+        }
+
+      } catch (attachmentError) {
+        console.error(`Error processing attachment ${attachment.filename}:`, attachmentError);
+      }
+    }
+
+    console.log(`=== EMAIL PROCESSING COMPLETE ===`);
+    console.log(`Attachments processed: ${attachmentsProcessed}`);
+    console.log(`Invoices found: ${invoicesFound}`);
+
+    return { invoicesFound, attachmentsProcessed };
   }
 
   // Save processed invoice to Firestore

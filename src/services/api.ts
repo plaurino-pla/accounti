@@ -71,10 +71,12 @@ export interface InvoiceStats {
 
 export interface ScanResult {
   success: boolean;
+  message?: string;
   emailsScanned: number;
   attachmentsProcessed: number;
   invoicesFound: number;
   errors?: string[];
+  isFirstTime?: boolean;
 }
 
 export interface DriveFile {
@@ -104,6 +106,15 @@ export const authAPI = {
   getAuthUrl: () => api.get<AuthResponse>('/auth/url'),
   refreshToken: (userId: string) => api.post('/auth/refresh', { userId }),
   validateToken: (accessToken: string) => api.post('/auth/validate', { accessToken }),
+};
+
+// Gmail Webhook API
+export const gmailAPI = {
+  setupWebhook: (userId: string, accessToken: string) =>
+    api.post<{ success: boolean; emailAddress: string; historyId: string }>(`/gmail/setup-webhook/${userId}`, { accessToken }),
+  
+  stopWebhook: (userId: string, accessToken: string) =>
+    api.post<{ success: boolean }>(`/gmail/stop-webhook/${userId}`, { accessToken }),
 };
 
 // Invoice API

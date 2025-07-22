@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Invoice, InvoiceStats, ProcessingLog, invoiceAPI, accountAPI, sheetsAPI, driveAPI, authAPI } from '../services/api';
+import { User, Invoice, InvoiceStats, ProcessingLog, invoiceAPI, accountAPI, sheetsAPI, driveAPI, authAPI, gmailAPI } from '../services/api';
 import InvoiceTable from './InvoiceTable';
 import AccountManager from './AccountManager';
 
@@ -216,15 +216,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
       const response = await invoiceAPI.scanInvoices(user.uid, currentAccessToken);
       
       if (response.data.success) {
-        await loadInvoices();
-        await loadStats();
-        await loadSpreadsheetUrl();
-        
-        const message = `Found ${response.data.invoicesFound} new invoices from ${response.data.emailsScanned} emails.`;
-        if (response.data.errors && response.data.errors.length > 0) {
-          alert(`${message}\n\nSome errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`);
+        if (response.data.isFirstTime) {
+          // First-time user - show background processing message
+          alert(response.data.message || 'First-time scan started in background. This may take a few minutes to complete.');
+          
+          // Set up Gmail webhook for real-time notifications
+          try {
+            await gmailAPI.setupWebhook(user.uid, currentAccessToken);
+            console.log('Gmail webhook set up successfully');
+          } catch (webhookError) {
+            console.error('Failed to set up Gmail webhook:', webhookError);
+            // Don't show error to user, webhook is optional
+          }
         } else {
-          alert(message);
+          // Regular user - show immediate results
+          await loadInvoices();
+          await loadStats();
+          await loadSpreadsheetUrl();
+          
+          const message = `Found ${response.data.invoicesFound} new invoices from ${response.data.emailsScanned} emails.`;
+          if (response.data.errors && response.data.errors.length > 0) {
+            alert(`${message}\n\nSome errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`);
+          } else {
+            alert(message);
+          }
         }
       } else {
         throw new Error('Scan failed');

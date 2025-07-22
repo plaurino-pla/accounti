@@ -13,6 +13,7 @@ import accountRoutes from './routes/account';
 import driveRoutes from './routes/drive';
 import sheetsRoutes from './routes/sheets';
 import adminRoutes from './routes/admin';
+import gmailRoutes from './routes/gmail';
 
 // Import scheduler service
 import { SchedulerService } from './services/scheduler';
@@ -31,6 +32,7 @@ app.use('/account', accountRoutes);
 app.use('/drive', driveRoutes);
 app.use('/sheets', sheetsRoutes);
 app.use('/admin', adminRoutes);
+app.use('/gmail', gmailRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
