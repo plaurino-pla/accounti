@@ -1,6 +1,5 @@
 import express from 'express';
 import * as admin from 'firebase-admin';
-import multer from 'multer';
 import { GmailService } from '../services/gmailService';
 import { InvoiceProcessor, ProcessedInvoice } from '../services/invoiceProcessor';
 import { SchedulerService } from '../services/scheduler';
@@ -8,42 +7,48 @@ import { SchedulerService } from '../services/scheduler';
 const router = express.Router();
 const db = admin.firestore();
 
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF files are allowed'));
-    }
-  },
-});
-
-// Manual invoice upload endpoint
-router.post('/upload', upload.single('file'), async (req, res) => {
+// Manual invoice upload endpoint with base64 support
+router.post('/upload', async (req, res) => {
   console.log('=== MANUAL UPLOAD ROUTE CALLED ===');
+  console.log('Request body keys:', Object.keys(req.body));
+  
   try {
-    const { userId, accessToken } = req.body;
-    const file = req.file;
+    const { userId, accessToken, filename, fileContent, fileSize } = req.body;
     
     if (!userId || !accessToken) {
+      console.error('Missing userId or accessToken');
       res.status(400).json({ error: 'Missing userId or accessToken' });
       return;
     }
 
-    if (!file) {
-      res.status(400).json({ error: 'No file uploaded' });
+    if (!filename || !fileContent) {
+      console.error('Missing filename or fileContent');
+      res.status(400).json({ error: 'Missing filename or fileContent' });
       return;
     }
 
-    console.log('Uploaded file:', {
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      size: file.size
+    // Validate file size (10MB limit)
+    if (fileSize > 10 * 1024 * 1024) {
+      console.error('File too large:', fileSize);
+      res.status(400).json({ error: 'File size exceeds 10MB limit' });
+      return;
+    }
+
+    // Convert base64 to buffer
+    let buffer: Buffer;
+    try {
+      buffer = Buffer.from(fileContent, 'base64');
+      console.log('Converted base64 to buffer, size:', buffer.length);
+    } catch (error) {
+      console.error('Error converting base64 to buffer:', error);
+      res.status(400).json({ error: 'Invalid file content' });
+      return;
+    }
+
+    console.log('Processing file:', {
+      filename,
+      size: buffer.length,
+      originalSize: fileSize
     });
 
     // Initialize services
@@ -55,18 +60,18 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     
     try {
       const invoiceCheck = await invoiceProcessor.isInvoiceAttachment(
-        file.originalname, 
-        file.buffer
+        filename, 
+        buffer
       );
       isInvoice = invoiceCheck.isInvoice;
       
       if (isInvoice) {
         // Extract data for duplicate checking
-        extractedData = await invoiceProcessor.processInvoiceWithDocumentAI(file.buffer, file.originalname);
-        extractedData.originalFilename = file.originalname;
+        extractedData = await invoiceProcessor.processInvoiceWithDocumentAI(buffer, filename);
+        extractedData.originalFilename = filename;
       }
     } catch (invoiceError) {
-      const errorMsg = `Error checking if file is invoice ${file.originalname}: ${invoiceError}`;
+      const errorMsg = `Error checking if file is invoice ${filename}: ${invoiceError}`;
       console.error(errorMsg);
       res.status(500).json({ 
         success: false, 
@@ -79,7 +84,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     if (!isInvoice) {
-      console.log(`Skipping non-invoice file: ${file.originalname}`);
+      console.log(`Skipping non-invoice file: ${filename}`);
       res.json({
         success: true,
         invoicesFound: 0,
@@ -117,14 +122,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     // Process and save the new invoice
     try {
       console.log('=== PROCESSING MANUAL UPLOAD ===');
-      console.log('Invoice detected, processing:', file.originalname);
+      console.log('Invoice detected, processing:', filename);
       
       await invoiceProcessor.processAndSaveInvoice(
         userId,
         emailId,
         attachmentId,
-        file.originalname,
-        file.buffer,
+        filename,
+        buffer,
         accessToken
       );
 
@@ -136,7 +141,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         message: 'Invoice uploaded and processed successfully'
       });
     } catch (processError) {
-      const errorMsg = `Error processing uploaded invoice ${file.originalname}: ${processError}`;
+      const errorMsg = `Error processing uploaded invoice ${filename}: ${processError}`;
       console.error(errorMsg);
       res.status(500).json({ 
         success: false, 

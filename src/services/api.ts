@@ -122,12 +122,14 @@ export const invoiceAPI = {
   getInvoiceStats: (userId: string) =>
     api.get<InvoiceStats>(`/invoices/${userId}/stats`),
   
-  uploadManualInvoice: (formData: FormData) =>
-    api.post<ScanResult>('/invoices/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    }),
+  uploadManualInvoice: (uploadData: {
+    userId: string;
+    accessToken: string;
+    filename: string;
+    fileContent: string;
+    fileSize: number;
+  }) =>
+    api.post<ScanResult>('/invoices/upload', uploadData),
 };
 
 // Drive API

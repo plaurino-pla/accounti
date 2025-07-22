@@ -122,45 +122,68 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         }
       }
 
-      // Create FormData for file upload
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('userId', user.uid);
-      formData.append('accessToken', currentAccessToken);
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64Data = reader.result as string;
+          const base64Content = base64Data.split(',')[1]; // Remove data:application/pdf;base64, prefix
+          
+          const uploadData = {
+            userId: user.uid,
+            accessToken: currentAccessToken,
+            filename: selectedFile.name,
+            fileContent: base64Content,
+            fileSize: selectedFile.size
+          };
 
-      const response = await invoiceAPI.uploadManualInvoice(formData);
+          const response = await invoiceAPI.uploadManualInvoice(uploadData);
+          
+          if (response.data.success) {
+            await loadInvoices();
+            await loadStats();
+            await loadSpreadsheetUrl();
+            
+            const message = `Invoice uploaded successfully! Found ${response.data.invoicesFound} invoice from uploaded file.`;
+            if (response.data.errors && response.data.errors.length > 0) {
+              alert(`${message}\n\nSome errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`);
+            } else {
+              alert(message);
+            }
+            
+            // Reset file selection
+            setSelectedFile(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+          } else {
+            throw new Error('Upload failed');
+          }
+        } catch (error: any) {
+          console.error('Manual upload error:', error);
+          
+          if (error.response?.status === 401) {
+            alert('Your session has expired. Please sign in again.');
+            localStorage.removeItem('accounti_user');
+            window.location.reload();
+          } else {
+            alert(`Failed to upload invoice. Error: ${error.message}`);
+          }
+        } finally {
+          setUploadLoading(false);
+        }
+      };
       
-      if (response.data.success) {
-        await loadInvoices();
-        await loadStats();
-        await loadSpreadsheetUrl();
-        
-        const message = `Invoice uploaded successfully! Found ${response.data.invoicesFound} invoice from uploaded file.`;
-        if (response.data.errors && response.data.errors.length > 0) {
-          alert(`${message}\n\nSome errors occurred:\n${response.data.errors.slice(0, 3).join('\n')}`);
-        } else {
-          alert(message);
-        }
-        
-        // Reset file selection
-        setSelectedFile(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-      } else {
-        throw new Error('Upload failed');
-      }
+      reader.onerror = () => {
+        alert('Error reading file. Please try again.');
+        setUploadLoading(false);
+      };
+      
+      reader.readAsDataURL(selectedFile);
+      
     } catch (error: any) {
       console.error('Manual upload error:', error);
-      
-      if (error.response?.status === 401) {
-        alert('Your session has expired. Please sign in again.');
-        localStorage.removeItem('accounti_user');
-        window.location.reload();
-      } else {
-        alert(`Failed to upload invoice. Error: ${error.message}`);
-      }
-    } finally {
+      alert(`Failed to upload invoice. Error: ${error.message}`);
       setUploadLoading(false);
     }
   };
