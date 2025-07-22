@@ -361,10 +361,18 @@ router.get('/:userId', async (req, res) => {
       .offset(parseInt(offset as string))
       .get();
 
-    const invoices = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const invoices = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        // Convert Firestore Timestamps to ISO strings for frontend
+        issueDate: data.issueDate ? data.issueDate.toDate().toISOString() : undefined,
+        dueDate: data.dueDate ? data.dueDate.toDate().toISOString() : undefined,
+        createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : undefined,
+        updatedAt: data.updatedAt ? data.updatedAt.toDate().toISOString() : undefined
+      };
+    });
 
     res.json({ invoices });
 

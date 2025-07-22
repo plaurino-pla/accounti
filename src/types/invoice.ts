@@ -21,8 +21,8 @@ export interface Invoice {
   // Extracted Data
   invoiceNumber?: string;
   vendorName?: string;
-  issueDate?: Date;
-  dueDate?: Date;
+  issueDate?: Date | string;
+  dueDate?: Date | string;
   amount?: number;
   currency?: string;
   taxAmount?: number;
@@ -35,8 +35,8 @@ export interface Invoice {
   // Processing Info
   confidence: number;
   processed: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | string;
+  updatedAt: Date | string;
 }
 
 export interface ProcessingLog {

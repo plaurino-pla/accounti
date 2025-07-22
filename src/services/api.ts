@@ -48,8 +48,8 @@ export interface Invoice {
   attachmentId: string;
   invoiceNumber?: string;
   vendorName?: string;
-  issueDate?: Date;
-  dueDate?: Date;
+  issueDate?: Date | string;
+  dueDate?: Date | string;
   amount?: number;
   currency?: string;
   taxAmount?: number;
@@ -58,8 +58,8 @@ export interface Invoice {
   driveLink?: string;
   confidence: number;
   processed: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | string;
+  updatedAt: Date | string;
 }
 
 export interface InvoiceStats {
