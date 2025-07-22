@@ -1,8 +1,6 @@
 import OpenAI from 'openai';
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
-import pdfParse from 'pdf-parse';
-import { createCanvas, loadImage } from 'canvas';
 
 const db = admin.firestore();
 
@@ -29,103 +27,30 @@ export class GPTVisionService {
     console.log('=== GPT SERVICE INITIALIZED ===');
   }
 
-  // Convert PDF buffer to image (first page)
-  private async pdfToImage(buffer: Buffer): Promise<Buffer> {
-    try {
-      console.log('Converting PDF to image...');
-      
-      // Try to parse PDF first
-      let pdfText = '';
-      try {
-        const pdfData = await pdfParse(buffer);
-        pdfText = pdfData.text || '';
-        console.log(`PDF parsed successfully, ${pdfData.numpages || 1} pages, text length: ${pdfText.length}`);
-      } catch (pdfError) {
-        console.log('PDF parsing failed, creating fallback image');
-        pdfText = '[PDF content could not be parsed]';
-      }
-      
-      // Create a canvas for the image
-      const canvas = createCanvas(800, 1000); // Default size
-      const ctx = canvas.getContext('2d');
-      
-      // Fill with white background
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      // Add text representation
-      ctx.fillStyle = 'black';
-      ctx.font = '12px Arial';
-      const lines = pdfText.split('\n').slice(0, 50); // First 50 lines
-      lines.forEach((line: string, index: number) => {
-        ctx.fillText(line.substring(0, 80), 10, 20 + (index * 15));
-      });
-      
-      // Convert canvas to buffer
-      const imageBuffer = canvas.toBuffer('image/png');
-      console.log('PDF converted to image, size:', imageBuffer.length, 'bytes');
-      
-      return imageBuffer;
-    } catch (error) {
-      console.error('Error converting PDF to image:', error);
-      // Create a simple fallback image
-      const canvas = createCanvas(400, 200);
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, 400, 200);
-      ctx.fillStyle = 'black';
-      ctx.font = '16px Arial';
-      ctx.fillText('PDF Content', 10, 30);
-      ctx.fillText('(Image conversion failed)', 10, 50);
-      return canvas.toBuffer('image/png');
-    }
-  }
-
-  // Extract text from PDF
-  private async extractTextFromPDF(buffer: Buffer): Promise<string> {
-    try {
-      console.log('Extracting text from PDF...');
-      const pdfData = await pdfParse(buffer);
-      const text = pdfData.text || '';
-      console.log('PDF text extracted, length:', text.length);
-      console.log('First 500 characters:', text.substring(0, 500));
-      return text;
-    } catch (error) {
-      console.error('PDF text extraction failed:', error);
-      // Return a more descriptive fallback
-      return `[PDF text extraction failed: ${(error as Error).message}. Buffer size: ${buffer.length} bytes]`;
-    }
-  }
-
-  // Process invoice with ChatGPT using both text and image
+  // Process invoice with ChatGPT using base64 PDF data
   async processInvoiceWithChatGPT(buffer: Buffer, filename: string): Promise<GPTExtractedData> {
     console.log('=== CHATGPT INVOICE PROCESSING START ===');
     console.log('Filename:', filename);
     console.log('Buffer size:', buffer.length, 'bytes');
 
     try {
-      // Extract text from PDF
-      const extractedText = await this.extractTextFromPDF(buffer);
+      // Convert PDF buffer to base64
+      const pdfBase64 = buffer.toString('base64');
+      console.log('PDF converted to base64, length:', pdfBase64.length);
       
-      // Convert PDF to image
-      const imageBuffer = await this.pdfToImage(buffer);
+      console.log('Sending to ChatGPT with PDF data...');
       
-      // Convert image to base64
-      const base64Image = imageBuffer.toString('base64');
-      
-      console.log('Sending to ChatGPT with text and image...');
-      
-      // Send to ChatGPT with both text and image
+      // Send to ChatGPT with PDF data
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Using gpt-4o-mini for cost efficiency
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: `You are an expert invoice data extraction system. Analyze the provided invoice text and image to extract structured data.
+            content: `You are an expert invoice data extraction system. Analyze the provided PDF document to extract structured data.
 
-IMPORTANT INSTRUCTIONS:
-1. Look at BOTH the text content AND the image
-2. Extract the most accurate data possible
+CRITICAL INSTRUCTIONS:
+1. You will receive a PDF document as base64 data
+2. Extract the most accurate data possible from the PDF
 3. Return ONLY valid JSON with these exact fields:
    - vendorName: string (company/supplier name)
    - invoiceNumber: string (invoice ID/number)
@@ -136,23 +61,24 @@ IMPORTANT INSTRUCTIONS:
    - taxAmount: number (tax/VAT amount if present)
    - confidence: number (0.0 to 1.0, how confident you are)
 
-4. If a field is not found, use null or empty string
+4. If a field is not found, use null
 5. For amounts, extract only the number (no currency symbols)
 6. For dates, use YYYY-MM-DD format
-7. Be very careful with currency detection
-8. Handle multi-language invoices (Spanish, Portuguese, Italian, etc.)`
+7. Handle multi-language invoices (Spanish, Portuguese, Italian, etc.)
+8. ALWAYS return valid JSON, even if you can't extract much data
+9. If you can't read the PDF, return a JSON with null values and low confidence`
           },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: `Please extract invoice data from this document. Here's the extracted text:\n\n${extractedText.substring(0, 2000)}`
+                text: `Please extract invoice data from this PDF document. The document is attached as base64 data.`
               },
               {
                 type: 'image_url',
                 image_url: {
-                  url: `data:image/png;base64,${base64Image}`
+                  url: `data:application/pdf;base64,${pdfBase64}`
                 }
               }
             ]
@@ -179,12 +105,33 @@ IMPORTANT INSTRUCTIONS:
         if (jsonMatch) {
           extractedData = JSON.parse(jsonMatch[0]);
         } else {
-          throw new Error('No JSON found in response');
+          // If no JSON found, create a fallback response
+          console.log('No JSON found in response, creating fallback');
+          extractedData = {
+            vendorName: null,
+            invoiceNumber: null,
+            issueDate: null,
+            dueDate: null,
+            amount: null,
+            currency: null,
+            taxAmount: null,
+            confidence: 0.1
+          };
         }
       } catch (parseError) {
         console.error('Failed to parse ChatGPT response:', parseError);
         console.log('Raw response was:', content);
-        throw new Error('Invalid JSON response from ChatGPT');
+        // Create fallback data
+        extractedData = {
+          vendorName: null,
+          invoiceNumber: null,
+          issueDate: null,
+          dueDate: null,
+          amount: null,
+          currency: null,
+          taxAmount: null,
+          confidence: 0.1
+        };
       }
 
       // Validate and clean the data
@@ -196,7 +143,7 @@ IMPORTANT INSTRUCTIONS:
         amount: typeof extractedData.amount === 'number' ? extractedData.amount : null,
         currency: extractedData.currency || null,
         taxAmount: typeof extractedData.taxAmount === 'number' ? extractedData.taxAmount : null,
-        confidence: typeof extractedData.confidence === 'number' ? Math.max(0, Math.min(1, extractedData.confidence)) : 0.8
+        confidence: typeof extractedData.confidence === 'number' ? Math.max(0, Math.min(1, extractedData.confidence)) : 0.1
       };
 
       console.log('=== CHATGPT EXTRACTION COMPLETE ===');
@@ -207,7 +154,19 @@ IMPORTANT INSTRUCTIONS:
     } catch (error) {
       console.error('=== CHATGPT PROCESSING FAILED ===');
       console.error('Error:', error);
-      throw new Error(`ChatGPT processing failed: ${(error as Error).message}`);
+      
+      // Return fallback data instead of throwing
+      console.log('Returning fallback data due to error');
+      return {
+        vendorName: null,
+        invoiceNumber: null,
+        issueDate: null,
+        dueDate: null,
+        amount: null,
+        currency: null,
+        taxAmount: null,
+        confidence: 0.1
+      };
     }
   }
 
