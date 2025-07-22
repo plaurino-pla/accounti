@@ -58,8 +58,8 @@ export class GmailService {
 
       const detailedMessages: EmailMessage[] = [];
 
-      // Get detailed information for each message (limit to first 20 to avoid timeouts)
-      const messagesToProcess = messages.slice(0, 20);
+      // Get detailed information for each message (limit to first 10 to avoid timeouts)
+      const messagesToProcess = messages.slice(0, 10);
       
       for (const message of messagesToProcess) {
         try {

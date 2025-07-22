@@ -43,13 +43,26 @@ router.post('/scan', async (req, res) => {
     // Get emails with attachments from the search date
     const emails = await gmailService.getEmailsWithAttachments(searchDate);
     
+    console.log(`Processing ${emails.length} emails with attachments`);
+    
     let invoicesFound = 0;
     let attachmentsProcessed = 0;
     const errors: string[] = [];
     const latestEmailDate = new Date(0);
+    
+    // Add timeout protection - stop processing after 8 minutes to avoid function timeout
+    const startTime = Date.now();
+    const maxProcessingTime = 8 * 60 * 1000; // 8 minutes
 
     // Process each email
     for (const email of emails) {
+      // Check if we're approaching the timeout
+      const elapsedTime = Date.now() - startTime;
+      if (elapsedTime > maxProcessingTime) {
+        console.log(`Timeout protection: Stopping processing after ${elapsedTime}ms`);
+        break;
+      }
+      
       try {
         const emailDate = new Date(parseInt(email.internalDate));
         if (emailDate > latestEmailDate) {
