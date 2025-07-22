@@ -1,6 +1,6 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import AuthComponent from './components/AuthComponent';
+import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 
 const AppContent: React.FC = () => {
@@ -19,7 +19,7 @@ const AppContent: React.FC = () => {
       {user ? (
         <Dashboard user={user} />
       ) : (
-        <AuthComponent />
+        <LandingPage />
       )}
     </div>
   );
