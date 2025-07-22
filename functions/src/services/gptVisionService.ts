@@ -33,6 +33,22 @@ export class GPTVisionService {
     console.log('Filename:', filename);
     console.log('Buffer size:', buffer.length, 'bytes');
 
+    // Check file size (max 5MB to avoid memory issues)
+    const maxSizeBytes = 5 * 1024 * 1024; // 5MB
+    if (buffer.length > maxSizeBytes) {
+      console.log(`File too large (${buffer.length} bytes), skipping ChatGPT processing`);
+      return {
+        vendorName: null,
+        invoiceNumber: null,
+        issueDate: null,
+        dueDate: null,
+        amount: null,
+        currency: null,
+        taxAmount: null,
+        confidence: 0.1
+      };
+    }
+
     try {
       // Convert PDF buffer to base64
       const pdfBase64 = buffer.toString('base64');
