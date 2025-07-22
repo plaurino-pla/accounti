@@ -26,11 +26,21 @@ router.post('/scan', async (req, res) => {
     // Get last processed timestamp
     const lastProcessedDate = await gmailService.getLastProcessedTimestamp(userId);
     
-    // Only look for emails from the last 12 hours to avoid timeouts
-    const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
-    const searchDate = lastProcessedDate && lastProcessedDate > twelveHoursAgo ? lastProcessedDate : twelveHoursAgo;
+    let searchDate: Date;
     
-    // Get emails with attachments from the last 12 hours
+    if (!lastProcessedDate) {
+      // First time user - scan last 12 hours
+      console.log('First time user detected, scanning last 12 hours');
+      searchDate = new Date(Date.now() - 12 * 60 * 60 * 1000);
+    } else {
+      // Returning user - scan from last processed email onwards
+      console.log('Returning user, scanning from last processed email');
+      searchDate = lastProcessedDate;
+    }
+    
+    console.log('Searching for emails after:', searchDate.toISOString());
+    
+    // Get emails with attachments from the search date
     const emails = await gmailService.getEmailsWithAttachments(searchDate);
     
     let invoicesFound = 0;
