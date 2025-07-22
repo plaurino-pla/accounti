@@ -185,7 +185,17 @@ router.post('/scan', async (req, res) => {
     const userDoc = await db.collection('users').doc(userId).get();
     const userData = userDoc.data();
     const lastProcessed = userData?.lastProcessedTimestamp;
-    const isFirstTime = !lastProcessed;
+    
+    // Check if user has any existing invoices
+    const existingInvoicesSnapshot = await db.collection('invoices')
+      .where('userId', '==', userId)
+      .limit(1)
+      .get();
+    
+    const hasExistingInvoices = !existingInvoicesSnapshot.empty;
+    const isFirstTime = !hasExistingInvoices;
+    
+    console.log(`User ${userId} - First time: ${isFirstTime}, Has existing invoices: ${hasExistingInvoices}, Last processed: ${lastProcessed ? lastProcessed.toDate().toISOString() : 'Never'}`);
 
     // Calculate time range
     let timeRange: Date;

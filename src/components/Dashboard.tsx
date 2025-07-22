@@ -24,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showAccountManager, setShowAccountManager] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -218,7 +219,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
       if (response.data.success) {
         if (response.data.isFirstTime) {
           // First-time user - show background processing message
-          alert(response.data.message || 'First-time scan started in background. This may take a few minutes to complete.');
+          setProcessingStatus('First-time scan started in background. This may take a few minutes to complete. You can continue using the app while we process your emails.');
           
           // Set up Gmail webhook for real-time notifications (optional)
           try {
@@ -228,6 +229,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
             console.log('Gmail webhook setup failed (optional feature):', webhookError);
             // Don't show error to user, webhook is optional
           }
+          
+          // Start polling for updates
+          startPollingForUpdates();
         } else {
           // Regular user - show immediate results
           await loadInvoices();
@@ -264,6 +268,36 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
       style: 'currency',
       currency: 'USD'
     }).format(amount);
+  };
+
+  // Poll for updates during background processing
+  const startPollingForUpdates = () => {
+    const pollInterval = setInterval(async () => {
+      try {
+        // Check if processing is complete by looking for new invoices
+        const response = await invoiceAPI.getUserInvoices(user.uid);
+        const currentInvoiceCount = response.data.invoices.length;
+        
+        if (currentInvoiceCount > 0) {
+          // Processing completed, update UI
+          setProcessingStatus(null);
+          await loadInvoices();
+          await loadStats();
+          clearInterval(pollInterval);
+          
+          // Show success message
+          alert(`Background processing completed! Found ${currentInvoiceCount} invoice${currentInvoiceCount > 1 ? 's' : ''}.`);
+        }
+      } catch (error) {
+        console.error('Error polling for updates:', error);
+      }
+    }, 10000); // Poll every 10 seconds
+
+    // Stop polling after 10 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      setProcessingStatus('Background processing may still be running. Check back in a few minutes.');
+    }, 10 * 60 * 1000);
   };
 
   // Show loading state while initial data is being fetched
@@ -509,6 +543,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin }) => {
               </a>
             )}
           </div>
+          
+          {/* Processing Status */}
+          {processingStatus && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center space-x-3">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent"></div>
+                <div>
+                  <h4 className="font-medium text-blue-900">Processing in Background</h4>
+                  <p className="text-sm text-blue-700">{processingStatus}</p>
+                </div>
+              </div>
+            </div>
+          )}
           
           <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-white/50">
             <div className="flex items-center justify-between">
