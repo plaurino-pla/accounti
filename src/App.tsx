@@ -4,6 +4,7 @@ import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { User } from './services/api';
+import Logo from './components/Logo';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -12,8 +13,11 @@ const AppContent: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="text-center">
+          <Logo size="lg" color="dark" className="mb-8" />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        </div>
       </div>
     );
   }

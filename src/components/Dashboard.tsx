@@ -5,6 +5,7 @@ import InvoiceTable from './InvoiceTable';
 import AccountManager from './AccountManager';
 import ActivityFeed from './ActivityFeed';
 import { useActivityFeed } from '../hooks/useActivityFeed';
+import Logo from './Logo';
 
 interface DashboardProps {
   user: User;
@@ -470,15 +471,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin, isImperson
         <header className="bg-white/80 backdrop-blur-md border-b border-white/20 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                  Accounti
-                </h1>
+              <div className="flex items-center">
+                <Logo size="sm" showTagline={false} color="dark" />
               </div>
               
               <div className="flex items-center space-x-4">
@@ -553,15 +547,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSwitchToAdmin, isImperson
       <header className={`bg-white/80 backdrop-blur-md border-b border-white/20 sticky z-50 ${isImpersonating ? 'top-10' : 'top-0'}`}>
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                Accounti
-              </h1>
+            <div className="flex items-center">
+              <Logo size="sm" showTagline={false} color="dark" />
             </div>
             
                           <div className="flex items-center space-x-4">
