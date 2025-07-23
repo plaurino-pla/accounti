@@ -190,4 +190,32 @@ export class GmailService {
     
     return { subject, sender };
   }
+
+  // Send email notification
+  async sendEmail(to: string, subject: string, message: string): Promise<void> {
+    try {
+      const email = [
+        `Content-Type: text/html; charset="UTF-8"`,
+        `MIME-Version: 1.0`,
+        `to: ${to}`,
+        `subject: ${subject}`,
+        '',
+        message,
+      ].join('\n');
+
+      const encodedEmail = Buffer.from(email).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      await this.gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {
+          raw: encodedEmail
+        }
+      });
+
+      console.log(`Email sent to ${to}`);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      throw error;
+    }
+  }
 } 

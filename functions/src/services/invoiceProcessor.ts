@@ -3,6 +3,7 @@ import { DriveService } from './driveService';
 import { SheetsService, SheetRow } from './sheetsService';
 import { GPTVisionService, GPTExtractedData } from './gptVisionService';
 import { GmailService } from './gmailService';
+import EmailService from './emailService';
 
 const db = admin.firestore();
 
@@ -316,6 +317,20 @@ export class InvoiceProcessor {
 
       await sheetsService.addInvoiceRow(userId, sheetRow);
 
+      // Send email notification
+      try {
+        const userEmail = await this.getUserEmail(userId);
+        if (userEmail) {
+          await EmailService.sendInvoiceProcessedNotification(
+            userEmail,
+            1,
+            invoice.vendorName
+          );
+        }
+      } catch (emailError) {
+        console.error(`Failed to send invoice processed notification for user ${userId}:`, emailError);
+      }
+
       return invoice;
     } catch (error) {
       console.error('Error processing and saving invoice:', error);
@@ -427,6 +442,18 @@ export class InvoiceProcessor {
       console.error('Error checking for duplicate invoice:', error);
       // If there's an error checking for duplicates, assume it's not a duplicate
       return { isDuplicate: false };
+    }
+  }
+
+  // Get user's email address
+  private async getUserEmail(userId: string): Promise<string | null> {
+    try {
+      const userDoc = await db.collection('users').doc(userId).get();
+      const userData = userDoc.data();
+      return userData?.email || null;
+    } catch (error) {
+      console.error(`Error fetching email for user ${userId}:`, error);
+      return null;
     }
   }
 } 
